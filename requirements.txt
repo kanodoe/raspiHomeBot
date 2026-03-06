@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-telegram-bot
+sqlalchemy
+aiosqlite
+pydantic
+pydantic-settings
+wakeonlan
+python-dotenv
+httpx
+pyyaml
+asyncssh
+pytest
+pytest-asyncio

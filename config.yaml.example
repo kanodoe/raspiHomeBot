@@ -1,0 +1,12 @@
+system:
+  log_level: INFO
+  log_file: logs/home_bot.log
+  check_interval: 5  # seconds for PC monitor
+
+pc:
+  ping_timeout: 2
+  wol_broadcast: 255.255.255.255
+  ssh_port: 22
+
+gate:
+  open_duration: 5  # seconds for relay simulation

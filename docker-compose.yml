@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  homebot:
+    build: .
+    container_name: raspi-home-bot
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./.env:/app/.env
+      - ./config.yaml:/app/config.yaml
+      - .ssh:/root/.ssh:ro # For SSH shutdown
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/home_automation.db
+    network_mode: host # Crucial for WOL to work on local network from container
