@@ -10,6 +10,7 @@ class OllamaService:
     _base_url: str = settings.OLLAMA_BASE_URL
     _model: str = settings.OLLAMA_MODEL
     _process: Optional[subprocess.Popen] = None
+    _last_error: Optional[str] = None  # e.g. "model_not_found" for 404 model not found
 
     @classmethod
     async def is_port_listening_remotely(cls, host: str, port: int) -> bool:
@@ -152,6 +153,7 @@ class OllamaService:
 
     @classmethod
     async def generate_text(cls, prompt: str, system_prompt: Optional[str] = None) -> Optional[str]:
+        cls._last_error = None
         url = f"{cls._base_url}/api/generate"
         payload = {
             "model": cls._model,
@@ -167,8 +169,17 @@ class OllamaService:
                 if response.status_code == 200:
                     data = response.json()
                     return data.get("response")
-                else:
-                    logger.error(f"Ollama API Error {response.status_code}: {response.text}")
+                if response.status_code == 404:
+                    try:
+                        body = response.json()
+                        err = body.get("error", "")
+                        if "not found" in err.lower():
+                            cls._last_error = "model_not_found"
+                            logger.error(f"Ollama model '{cls._model}' not found. Available models: ollama list. Set OLLAMA_MODEL in .env or run 'ollama pull {cls._model}' on the Ollama host.")
+                            return None
+                    except Exception:
+                        pass
+                logger.error(f"Ollama API Error {response.status_code}: {response.text}")
         except Exception as e:
             logger.error(f"Error calling Ollama generate: {e}")
         return None
@@ -188,6 +199,17 @@ class OllamaService:
         prompt = build_user_prompt(user_prompt, refinamiento)
         response_text = await cls.generate_text(prompt, SYSTEM_PROMPT_STYLE_LYRICS)
         if not response_text:
+            if cls._last_error == "model_not_found":
+                return {
+                    "style": "",
+                    "lyrics": "",
+                    "error": "model_not_found",
+                    "message": (
+                        f"El modelo '{cls._model}' no está instalado en Ollama. "
+                        f"En el equipo donde corre Ollama ejecuta: ollama pull {cls._model} "
+                        f"o cambia OLLAMA_MODEL en .env por un modelo que ya tengas (ej: llama3.2, mistral)."
+                    ),
+                }
             return None
 
         result = parse_style_lyrics_response(response_text)

@@ -30,23 +30,22 @@ class AceStepService:
         """
         Start the ACE-Step API. Returns (success, error_message).
         If the port is already in use on the remote host, we do NOT kill the process;
-        we return False with a message asking the user to set HOST=0.0.0.0 in start_api_server_docker_remote.bat.
+        we return False with a message asking the user to set HOST=0.0.0.0 in start_api_server.bat.
         """
         if await cls.is_api_ready():
             logger.info("ACE-Step API is already running.")
             return True, None
 
-        # Prepare the path for the bat file
-        bat_name = "start_api_server_docker_remote.bat"
+        # Original bat from ACE-Step repo; when using SSH we copy it with HOST=0.0.0.0 to start_api_server_docker.bat
+        original_bat_name = "start_api_server.bat"
+        docker_bat_name = "start_api_server_docker.bat"
         if os.name != 'nt' and (":" in settings.ACESTEP_PATH or settings.ACESTEP_PATH.startswith("\\")):
-            # Construct Windows path string on POSIX
             path_cleaned = settings.ACESTEP_PATH.rstrip("/\\")
-            bat_path_str = f"{path_cleaned}\\{bat_name}".replace("/", "\\")
+            bat_path_str = f"{path_cleaned}\\{original_bat_name}".replace("/", "\\")
             ace_path_str = path_cleaned.replace("/", "\\")
         else:
             ace_path = Path(settings.ACESTEP_PATH)
-            bat_path = ace_path / bat_name
-            bat_path_str = str(bat_path)
+            bat_path_str = str(ace_path / original_bat_name)
             ace_path_str = str(ace_path)
         
         # Check if we should try to run this locally or via SSH
@@ -66,7 +65,7 @@ class AceStepService:
             if await cls.is_port_listening_remotely(ssh_host, settings.ACESTEP_PORT):
                 msg = (
                     f"La API de ACE-Step parece estar en ejecución en el equipo remoto ({ssh_host}:{settings.ACESTEP_PORT}) "
-                    "pero no es accesible desde aquí. Configura start_api_server_docker_remote.bat con HOST=0.0.0.0 y permite "
+                    "pero no es accesible desde aquí. Configura start_api_server.bat con HOST=0.0.0.0 y permite "
                     f"el puerto {settings.ACESTEP_PORT} en el firewall de Windows."
                 )
                 logger.warning(msg)
@@ -75,31 +74,54 @@ class AceStepService:
             from app.utils.ssh import run_ssh_command
             logger.info(f"Attempting to start ACE-Step remotely on {ssh_host} via SSH (Windows path on {os.name})...")
             
-            # We use powershell to create a temporary .bat that forces HOST=0.0.0.0 
-            # if the original has it hardcoded to 127.0.0.1
-            docker_bat = "start_api_server_docker_remote.bat"
-            cmd = (
-                f'powershell -Command "cd \'{ace_path_str}\'; '
-                f'(Get-Content .\\{bat_name}) -replace \'set HOST=127.0.0.1\', \'set HOST=0.0.0.0\' | Set-Content .\\{docker_bat}; '
-                f'Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false && .\\{docker_bat}\' -WorkingDirectory \'{ace_path_str}\' -WindowStyle Hidden"'
-            )
+            # SSH on Windows often has minimal PATH (no user vars); load User+Machine PATH so child finds uv/python
+            remote_bat = (settings.ACESTEP_REMOTE_BAT or "").strip()
+            if remote_bat:
+                # Run existing .bat as-is (e.g. start_api_server_docker_remote.bat generated earlier)
+                bat_to_run = remote_bat
+                cmd = (
+                    f'powershell -Command "'
+                    f'$env:Path = [Environment]::GetEnvironmentVariable(\"Path\",\"User\") + \";\" + [Environment]::GetEnvironmentVariable(\"Path\",\"Machine\"); '
+                    f'Set-Location -LiteralPath \'{ace_path_str}\'; '
+                    f'Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false & .\\{bat_to_run}\' -WorkingDirectory \'{ace_path_str}\' -WindowStyle Hidden"'
+                )
+            else:
+                # Read start_api_server.bat, write docker bat with HOST=0.0.0.0, run it
+                bat_to_run = docker_bat_name
+                cmd = (
+                    f'powershell -Command "'
+                    f'$env:Path = [Environment]::GetEnvironmentVariable(\"Path\",\"User\") + \";\" + [Environment]::GetEnvironmentVariable(\"Path\",\"Machine\"); '
+                    f'Set-Location -LiteralPath \'{ace_path_str}\'; '
+                    f'(Get-Content -LiteralPath \'.\\{original_bat_name}\' -Raw) -replace \'set HOST=127.0.0.1\', \'set HOST=0.0.0.0\' | Set-Content -LiteralPath \'.\\{docker_bat_name}\' -Encoding ASCII; '
+                    f'Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false & .\\{bat_to_run}\' -WorkingDirectory \'{ace_path_str}\' -WindowStyle Hidden"'
+                )
             
             if await run_ssh_command(cmd, ssh_host):
-                # Wait for it to be ready
-                logger.info("SSH command sent. Waiting up to 60s for API to be ready...")
-                for i in range(30):
+                logger.info("SSH command sent. Waiting up to 90s for API to be ready (ACE-Step may load models on first run)...")
+                for i in range(45):
                     await asyncio.sleep(2)
                     if await cls.is_api_ready(): 
                         logger.info(f"ACE-Step API is ready (via SSH) after {i*2}s.")
                         return True, None
                 
-                # Check if it is at least listening (diagnostics)
-                if await cls.is_port_listening_remotely(ssh_host, settings.ACESTEP_PORT):
-                    logger.warning(f"ACE-Step API is listening on {ssh_host}:{settings.ACESTEP_PORT} but still NOT REACHABLE via HTTP. "
-                                   "Check Windows Firewall rules for port {settings.ACESTEP_PORT}.")
-                
-                logger.warning("ACE-Step API started via SSH but is not responding yet (timed out after 60s).")
-                return False, "La API de ACE-Step se inició pero no respondió a tiempo. Revisa el firewall y que HOST=0.0.0.0 en start_api_server_docker_remote.bat."
+                # Diagnóstico: ¿el puerto está en escucha en el host?
+                port_listening = await cls.is_port_listening_remotely(ssh_host, settings.ACESTEP_PORT)
+                if port_listening:
+                    logger.warning(
+                        f"ACE-Step is listening on {ssh_host}:{settings.ACESTEP_PORT} but not reachable from here. "
+                        "Likely bound to 127.0.0.1 or blocked by Windows Firewall."
+                    )
+                    return False, (
+                        f"La API está en ejecución en el equipo remoto pero no es accesible desde el bot. "
+                        f"Comprueba que el .bat use HOST=0.0.0.0 y que el firewall de Windows permita el puerto {settings.ACESTEP_PORT}."
+                    )
+                # Puerto no en escucha: el proceso no arrancó (p. ej. uv no en PATH en sesión SSH)
+                logger.warning("ACE-Step process did not start or exited (port not listening). SSH session may have minimal PATH; ensure uv is in User PATH.")
+                return False, (
+                    "El proceso de ACE-Step no llegó a arrancar en el equipo remoto (puerto no en escucha). "
+                    "En Windows, la sesión SSH suele tener un PATH distinto al de tu usuario: asegúrate de que uv esté en el PATH de usuario "
+                    "o ejecuta el .bat manualmente una vez para ver el error. Revisa también que ACESTEP_PATH sea la ruta correcta."
+                )
             return False, "No se pudo ejecutar el comando SSH para iniciar ACE-Step. Revisa la conexión y las credenciales."
 
         if not Path(bat_path_str).exists() and os.name == 'nt':

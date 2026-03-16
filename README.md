@@ -188,6 +188,9 @@ Si prefieres seguir usando el archivo `.bat` directamente, en el equipo remoto (
 - **Requisitos:** OpenSSH habilitado en Windows, clave SSH (`SSH_KEY_PATH`), usuario (`SSH_USER`), puerto por defecto 22 (configurable con `SSH_PORT` en `.env` o `config.yaml`).
 - Verifica que desde el contenedor puedas conectar por SSH al host (`ssh -i <clave> usuario@PC_IP`). Revisa los logs del bot: incluyen `exit_status`, `stderr` y el host:puerto para facilitar el diagnóstico.
 
+### Ollama responde pero "model not found" (404)
+- La conexión a Ollama funciona (puerto abierto) pero el **modelo** configurado en `OLLAMA_MODEL` (ej: `llama3`) no está instalado en el equipo donde corre Ollama. En ese equipo ejecuta `ollama pull llama3` (o el nombre que tengas en `.env`) o cambia `OLLAMA_MODEL` por un modelo que ya tengas instalado (ej: `llama3.2`, `mistral`). Para ver los modelos instalados: `ollama list`.
+
 ### Variables de red
 - Usa `PC_IP` (IP LAN del PC), `ACESTEP_HOST` y `OLLAMA_BASE_URL` apuntando a esa IP (ej: `http://192.168.1.46:11434`), no a `127.0.0.1`, cuando el bot corre en Docker y los servicios en el host.
 

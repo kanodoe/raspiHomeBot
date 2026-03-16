@@ -169,6 +169,9 @@ async def ollama_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted(UserRole.USER)
 async def generate_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Limpiar estado de intentos anteriores para que Manual no use datos viejos
+    for key in ("song_style", "song_lyrics", "refine_target"):
+        context.user_data.pop(key, None)
     reply_keyboard = [["Manual", "Asistido por IA"]]
     await update.message.reply_text(
         "¡Genial! Vamos a crear una canción. ¿Cómo quieres proceder?",
@@ -217,7 +220,14 @@ async def generate_song_ai_prompt(update: Update, context: ContextTypes.DEFAULT_
     if not suggestions:
         await update.message.reply_text("Hubo un error al generar sugerencias. Por favor, intenta describir el tema de nuevo:")
         return AI_PROMPT
-    
+    if suggestions.get("error") == "model_not_found":
+        msg = suggestions.get("message", "El modelo configurado no está instalado en Ollama.")
+        await update.message.reply_text(
+            f"❌ {msg}\n\n"
+            "Puedes usar /generate_song de nuevo y elegir **Manual** para crear la canción sin asistente de IA.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
     context.user_data["song_style"] = suggestions["style"]
     context.user_data["song_lyrics"] = suggestions["lyrics"]
     
@@ -284,25 +294,33 @@ async def generate_song_lyrics_text(update: Update, context: ContextTypes.DEFAUL
     return await generate_song_finish(update, context, lyrics)
 
 async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, lyrics: str):
-    style = context.user_data.get("song_style")
+    style = context.user_data.get("song_style") or ""
+    style = (style or "").strip()
     bus = context.bot_data.get("bus")
-    
+
+    if not style:
+        await update.message.reply_text(
+            "No se encontró el estilo de la canción. Por favor usa /generate_song de nuevo y elige Manual o Asistido por IA.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
     await update.message.reply_text(
         "Iniciando generación... Esto puede tardar unos minutos.\n"
-        "Si te gusta el resultado, podrás guardarla permanentemente con /save_song.", 
+        "Si te gusta el resultado, podrás guardarla permanentemente con /save_song.",
         reply_markup=ReplyKeyboardRemove()
     )
-    
+
     if bus:
         await bus.publish("command", {
-            "command": "acestep_generate", 
+            "command": "acestep_generate",
             "source": f"chat_{update.effective_chat.id}",
             "prompt": style,
-            "lyrics": lyrics
+            "lyrics": lyrics or ""
         })
     else:
         await update.message.reply_text("Error: Event bus no disponible.")
-    
+
     return ConversationHandler.END
 
 async def generate_song_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -26,6 +26,8 @@ class AppSettings(BaseSettings):
     ACESTEP_HOST: str = "127.0.0.1"
     ACESTEP_PORT: int = 8001
     ACESTEP_SAVE_PATH: str = r"C:\telegram_songs"
+    # If set, run this .bat on the remote host as-is (no copy from start_api_server.bat). E.g. start_api_server_docker_remote.bat
+    ACESTEP_REMOTE_BAT: str = ""
 
     # Ollama Settings
     OLLAMA_BASE_URL: str = "http://localhost:11434"
