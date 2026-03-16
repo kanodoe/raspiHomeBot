@@ -111,7 +111,8 @@ graph TD
 - `/status`: Get a summary of the system state.
 - `/gate_open`: Open the gate (available for guests).
 - `/invite <user_id> <hours>h`: (Admin only) Grant temporary access to another user.
-- `/invite_songs <user_id> <cantidad> [horas]`: (Admin only) Invitar a un usuario con un cupo limitado de canciones (solo puede usar `/generate_song`).
+- `/invite_link <cantidad>`: (Admin only) Genera un enlace de invitación; el bot te lo envía por mensaje privado. Quien abra el enlace recibe ese cupo de canciones (no necesitas saber su ID).
+- `/invite_songs <user_id> <cantidad> [horas]`: (Admin only) Invitar por ID a un usuario con un cupo limitado de canciones (solo puede usar `/generate_song`).
 - `/grant_songs <user_id> <cantidad>`: (Admin only) Añadir más canciones al cupo de un invitado.
 - `/estado_invitaciones`: (Admin only) Ver estado de invitaciones: canciones generadas, restantes y expiración.
 - `/solicitar_canciones`: (Invitados con cupo) Solicitar más canciones al administrador.

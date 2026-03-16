@@ -15,7 +15,7 @@ from app.database.session import init_db, AsyncSessionLocal
 from app.services.permission_service import PermissionService
 from app.bot.handlers import (
     pc_on, pc_off, pc_status, status_summary, gate_open, invite, start,
-    invite_songs, solicitar_canciones, grant_songs, estado_invitaciones,
+    invite_link, invite_songs, solicitar_canciones, grant_songs, estado_invitaciones,
     save_admin_song_callback,
     acestep_start, acestep_stop, acestep_save, ollama_start, ollama_stop,
     generate_song_start, generate_song_mode, generate_song_style,
@@ -75,6 +75,7 @@ async def register_commands(bot):
         
     if "acestep" in enabled:
         commands.append(BotCommand("generate_song", "Generar una canción (AI)"))
+        commands.append(BotCommand("invite_link", "Generar enlace de invitación (Admin)"))
         commands.append(BotCommand("invite_songs", "Invitación por cupo de canciones (Admin)"))
         commands.append(BotCommand("grant_songs", "Dar más canciones a un usuario (Admin)"))
         commands.append(BotCommand("solicitar_canciones", "Solicitar más cupo al administrador"))
@@ -103,6 +104,7 @@ def setup_bot():
         application.add_handler(CommandHandler("acestep_start", acestep_start))
         application.add_handler(CommandHandler("acestep_stop", acestep_stop))
         application.add_handler(CommandHandler("save_song", acestep_save))
+        application.add_handler(CommandHandler("invite_link", invite_link))
         application.add_handler(CommandHandler("invite_songs", invite_songs))
         application.add_handler(CommandHandler("grant_songs", grant_songs))
         application.add_handler(CommandHandler("solicitar_canciones", solicitar_canciones))

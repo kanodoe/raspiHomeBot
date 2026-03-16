@@ -45,11 +45,25 @@ En la práctica, cada usuario "ve" un comportamiento distinto según su rol (adm
 
 ---
 
+## Enlace de invitación (sin saber el ID)
+
+Puedes invitar a alguien **sin saber su Telegram ID** usando un enlace:
+
+1. Escribe **`/invite_link 5`** (o el número de canciones que quieras).
+2. El bot te enviará **solo a ti** (por mensaje privado) un enlace. Si escribes el comando en un grupo, el enlace no se muestra en el grupo.
+3. Envía ese enlace a la persona (por Telegram, WhatsApp, etc.).
+4. Cuando **ella abra el enlace**, se abrirá el bot y se creará automáticamente su invitación con esas canciones. Tú recibirás un aviso: *"El usuario X ha usado tu enlace de invitación y tiene N canciones."*
+
+No hace falta que tengas a la persona en la lista del bot ni que sepas su ID.
+
+---
+
 ## Resumen de comandos
 
 | Comando | Quién | Descripción |
 |--------|--------|-------------|
-| `/invite_songs <user_id> <cantidad> [horas]` | Admin | Invitar a un usuario con un cupo limitado de canciones. |
+| `/invite_link <cantidad>` | Admin | Genera un enlace de invitación; el bot te lo envía por privado. Quien lo abra recibe ese cupo de canciones. |
+| `/invite_songs <user_id> <cantidad> [horas]` | Admin | Invitar por ID a un usuario con un cupo limitado de canciones. |
 | `/grant_songs <user_id> <cantidad>` | Admin | Añadir más canciones al cupo de un usuario. |
 | `/solicitar_canciones` | Invitados con cupo | Solicitar más canciones al administrador. |
 | `/estado_invitaciones` | Admin | Ver estado de todas las invitaciones (generadas, restantes, expiración). |

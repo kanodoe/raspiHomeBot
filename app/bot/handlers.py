@@ -53,12 +53,90 @@ def restricted_to_song(func):
     return wrapped
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from app.core.config import settings
+
     user_id = update.effective_user.id
-    logger.info(f"Start command received from {user_id}")
-    await update.message.reply_text(
-        f"Bienvenido a RaspiHomeBot.\nTu Telegram ID es: `{user_id}`\n"
-        f"Asegúrate de que este ID esté configurado como `ADMIN_TELEGRAM_ID` en tu archivo `.env`."
-    )
+    text = (update.message.text or "").strip()
+    logger.info(f"Start command received from {user_id}: {text!r}")
+
+    # Enlace de invitación: /start invite_5 → crear invitación con 5 canciones para este usuario
+    if text.startswith("/start "):
+        payload = text[7:].strip()  # después de "/start "
+        if payload.startswith("invite_"):
+            try:
+                count = int(payload.replace("invite_", "", 1))
+                if 1 <= count <= 999:
+                    async with AsyncSessionLocal() as session:
+                        permission_service = PermissionService(session)
+                        await permission_service.create_song_invitation(
+                            inviter_id=settings.ADMIN_TELEGRAM_ID,
+                            invitee_id=user_id,
+                            invitee_username=update.effective_user.username or f"User_{user_id}",
+                            song_quota=count,
+                            duration_hours=None,
+                        )
+                    username = (update.effective_user.username and f"@{update.effective_user.username}") or str(user_id)
+                    await update.message.reply_text(
+                        f"✅ Tienes {count} canción(es) de regalo.\n\n"
+                        "*Qué puedes hacer:*\n"
+                        "• /generate_song — Crear una canción.\n"
+                        "• /solicitar_canciones — Pedir más canciones al administrador cuando se te acaben.\n\n"
+                        "No tienes acceso a otras funciones del bot (PC, portón, etc.).",
+                        parse_mode="Markdown"
+                    )
+                    try:
+                        await context.bot.send_message(
+                            chat_id=settings.ADMIN_TELEGRAM_ID,
+                            text=f"🎵 El usuario {username} (ID: {user_id}) ha usado tu enlace de invitación y tiene {count} canción(es)."
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not notify admin (invite link): {e}")
+                    return
+            except (ValueError, TypeError):
+                pass
+
+    # Saludo según tipo de usuario (evitar confundir a invitados con mensaje de admin)
+    async with AsyncSessionLocal() as session:
+        permission_service = PermissionService(session)
+        role = await permission_service.get_user_role(user_id)
+        remaining = await permission_service.get_remaining_songs(user_id)
+
+    if role == UserRole.ADMIN:
+        await update.message.reply_text(
+            f"Bienvenido a RaspiHomeBot (administrador).\n\n"
+            f"Tu Telegram ID es: `{user_id}`. Este ID debe estar en `ADMIN_TELEGRAM_ID` en el `.env`.\n\n"
+            "Puedes usar todos los comandos del bot, invitar con /invite_link o /invite_songs y ver el estado con /estado_invitaciones."
+        )
+    elif role == UserRole.USER:
+        await update.message.reply_text(
+            "Bienvenido a RaspiHomeBot.\n\n"
+            "Tienes acceso completo: encender/apagar PC, abrir portón, generar canciones, iniciar/parar ACE-Step y Ollama, etc. "
+            "Usa el menú de comandos (/) para ver las opciones."
+        )
+    elif role == UserRole.GUEST and remaining is not None:
+        await update.message.reply_text(
+            f"Bienvenido.\n\n"
+            f"Eres un invitado con cupo de canciones. Te quedan *{remaining}* canción(es).\n\n"
+            "*Qué puedes hacer:*\n"
+            "• /generate_song — Crear una canción (usa tu cupo).\n"
+            "• /solicitar_canciones — Pedir más canciones al administrador cuando se te acaben.\n\n"
+            "No tienes acceso a otras funciones del bot (PC, portón, etc.).",
+            parse_mode="Markdown"
+        )
+    elif role == UserRole.GUEST:
+        await update.message.reply_text(
+            "Bienvenido.\n\n"
+            "Tenías un cupo de canciones pero ya lo has usado. Usa /solicitar_canciones para pedir más al administrador.\n\n"
+            "No tienes acceso a otras funciones del bot."
+        )
+    else:
+        await update.message.reply_text(
+            f"Bienvenido a RaspiHomeBot.\n\n"
+            f"Tu Telegram ID es: `{user_id}` (por si el administrador necesita invitarte).\n\n"
+            "Si te han enviado un *enlace de invitación*, ábrelo para obtener tu cupo de canciones. "
+            "Si no, solo el administrador puede darte acceso.",
+            parse_mode="Markdown"
+        )
 
 @restricted(UserRole.USER)
 async def pc_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -143,6 +221,43 @@ async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Access granted to user {invitee_id} for {hours} hours.")
     except (ValueError, IndexError):
         await update.message.reply_text("Invalid arguments. Use: /invite <user_id> <hours>h")
+
+
+@restricted(UserRole.ADMIN)
+async def invite_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Genera un enlace de invitación; el bot te lo envía por mensaje privado. Uso: /invite_link <cantidad>"""
+    from app.core.config import settings
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("Uso: /invite_link <cantidad>\nEj: /invite_link 5 — te enviaré un enlace por privado; quien lo abra tendrá esa cantidad de canciones.")
+        return
+    try:
+        count = int(args[0])
+        if count < 1 or count > 999:
+            await update.message.reply_text("La cantidad debe estar entre 1 y 999.")
+            return
+    except ValueError:
+        await update.message.reply_text("Indica un número válido de canciones.")
+        return
+    me = await context.bot.get_me()
+    bot_username = me.username if me else None
+    if not bot_username:
+        await update.message.reply_text("No se pudo obtener el nombre del bot.")
+        return
+    link = f"https://t.me/{bot_username}?start=invite_{count}"
+    admin_chat_id = update.effective_user.id
+    try:
+        await context.bot.send_message(
+            chat_id=admin_chat_id,
+            text=f"🔗 Enlace de invitación ({count} canción/canciones):\n\n{link}\n\nEnvía este enlace a la persona que quieres invitar. Al abrirlo tendrá {count} canciones para generar."
+        )
+        if update.effective_chat.id != admin_chat_id:
+            await update.message.reply_text("Te he enviado el enlace por mensaje privado.")
+        else:
+            await update.message.reply_text(f"Enlace generado ({count} canciones). Revisa el mensaje de arriba.")
+    except Exception as e:
+        logger.warning(f"Could not send invite link to admin: {e}")
+        await update.message.reply_text("No pude enviarte el enlace por privado. Asegúrate de haber iniciado chat con el bot y vuelve a intentar.")
 
 
 @restricted(UserRole.ADMIN)
