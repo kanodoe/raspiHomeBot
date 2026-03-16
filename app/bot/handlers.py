@@ -31,6 +31,27 @@ def restricted(role: UserRole):
         return wrapped
     return decorator
 
+
+def restricted_to_song(func):
+    """Permite USER, ADMIN o invitados con cupo de canciones. Si cupo agotado, indica solicitar más."""
+    @wraps(func)
+    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user_id = update.effective_user.id
+        async with AsyncSessionLocal() as session:
+            permission_service = PermissionService(session)
+            if await permission_service.is_authorized(user_id, UserRole.USER):
+                return await func(update, context, *args, **kwargs)
+            if await permission_service.can_generate_song(user_id):
+                return await func(update, context, *args, **kwargs)
+            if await permission_service.has_any_song_invitation(user_id):
+                await update.message.reply_text(
+                    "Has agotado tu cupo de canciones. Puedes solicitar más al administrador con /solicitar_canciones."
+                )
+                return ConversationHandler.END
+        await update.message.reply_text("No tienes permiso para generar canciones.")
+        return ConversationHandler.END
+    return wrapped
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.info(f"Start command received from {user_id}")
@@ -123,6 +144,116 @@ async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except (ValueError, IndexError):
         await update.message.reply_text("Invalid arguments. Use: /invite <user_id> <hours>h")
 
+
+@restricted(UserRole.ADMIN)
+async def invite_songs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Invitación para generar solo canciones: /invite_songs <user_id> <cantidad> [horas]"""
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("Uso: /invite_songs <user_id> <cantidad> [horas]\nEj: /invite_songs 123456 5   o  /invite_songs 123456 5 720h")
+        return
+    try:
+        invitee_id = int(args[0])
+        count = int(args[1])
+        if count < 1:
+            await update.message.reply_text("La cantidad debe ser al menos 1.")
+            return
+        hours = None
+        if len(args) >= 3:
+            s = args[2].lower()
+            if s.endswith("h"):
+                hours = int(s[:-1])
+            else:
+                hours = int(s)
+        async with AsyncSessionLocal() as session:
+            permission_service = PermissionService(session)
+            await permission_service.create_song_invitation(
+                inviter_id=update.effective_user.id,
+                invitee_id=invitee_id,
+                invitee_username=f"Guest_{invitee_id}",
+                song_quota=count,
+                duration_hours=hours,
+            )
+        msg = f"Invitación de canciones creada: usuario {invitee_id} puede generar {count} canción(es)."
+        if hours:
+            msg += f" Válida {hours} horas."
+        await update.message.reply_text(msg)
+    except (ValueError, IndexError):
+        await update.message.reply_text("Argumentos inválidos. Uso: /invite_songs <user_id> <cantidad> [horas]")
+
+
+async def solicitar_canciones(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """El invitado solicita más cupo de canciones; se notifica al admin."""
+    from app.core.config import settings
+    user_id = update.effective_user.id
+    username = (update.effective_user.username or "") and f"@{update.effective_user.username}" or str(user_id)
+    async with AsyncSessionLocal() as session:
+        permission_service = PermissionService(session)
+        if not await permission_service.has_any_song_invitation(user_id):
+            await update.message.reply_text("Solo los invitados con cupo de canciones pueden usar este comando para solicitar más.")
+            return
+    await update.message.reply_text(
+        "Se ha notificado al administrador. Cuando te autorice más canciones podrás seguir generando."
+    )
+    try:
+        await context.bot.send_message(
+            chat_id=settings.ADMIN_TELEGRAM_ID,
+            text=f"🎵 Solicitud de más canciones: {username} (ID: {user_id}). "
+            "Para darle más cupo: /grant_songs <user_id> <cantidad>\nEj: /grant_songs " + str(user_id) + " 5"
+        )
+    except Exception as e:
+        logger.warning(f"Could not notify admin: {e}")
+
+
+@restricted(UserRole.ADMIN)
+async def grant_songs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Añade cupo de canciones a un usuario: /grant_songs <user_id> <cantidad>"""
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("Uso: /grant_songs <user_id> <cantidad>\nEj: /grant_songs 123456 5")
+        return
+    try:
+        invitee_id = int(args[0])
+        count = int(args[1])
+        if count < 1:
+            await update.message.reply_text("La cantidad debe ser al menos 1.")
+            return
+        async with AsyncSessionLocal() as session:
+            permission_service = PermissionService(session)
+            await permission_service.add_song_quota(
+                admin_id=update.effective_user.id,
+                invitee_telegram_id=invitee_id,
+                count=count,
+                invitee_username=None,
+            )
+        await update.message.reply_text(f"Se han añadido {count} canciones al usuario {invitee_id}.")
+    except (ValueError, IndexError):
+        await update.message.reply_text("Argumentos inválidos. Uso: /grant_songs <user_id> <cantidad>")
+
+
+@restricted(UserRole.ADMIN)
+async def estado_invitaciones(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lista estado de invitaciones por cupo de canciones: generadas, restantes, expiración."""
+    async with AsyncSessionLocal() as session:
+        permission_service = PermissionService(session)
+        rows = await permission_service.list_song_invitations()
+    if not rows:
+        await update.message.reply_text("No hay invitaciones activas por cupo de canciones.")
+        return
+    from datetime import datetime as dt
+    lines = ["📋 *Estado de invitaciones (canciones)*\n"]
+    for r in rows:
+        exp = r["expiration_time"].strftime("%Y-%m-%d %H:%M") if hasattr(r["expiration_time"], "strftime") else str(r["expiration_time"])
+        first = ""
+        if r.get("first_used_at"):
+            first = f" · Primera vez: {r['first_used_at'].strftime('%Y-%m-%d %H:%M')}" if hasattr(r["first_used_at"], "strftime") else ""
+        lines.append(
+            f"• {r['invitee_username']} (ID: {r['invitee_telegram_id']})\n"
+            f"  Generadas: {r['songs_used']}/{r['song_quota']} · Quedan: {r['remaining']} · Expira: {exp}{first}"
+        )
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 @restricted(UserRole.USER)
 async def acestep_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bus = context.bot_data.get("bus")
@@ -167,8 +298,46 @@ async def ollama_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Event bus not available.")
 
-@restricted(UserRole.USER)
+@restricted_to_song
 async def generate_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from app.core.config import settings
+    from app.services.acestep_service import AceStepService
+
+    user_id = update.effective_user.id
+    username = (update.effective_user.username or "") and f"@{update.effective_user.username}" or str(user_id)
+
+    async with AsyncSessionLocal() as session:
+        permission_service = PermissionService(session)
+        role = await permission_service.get_user_role(user_id)
+    is_song_guest = role == UserRole.GUEST
+
+    if is_song_guest:
+        async with AsyncSessionLocal() as session:
+            perm2 = PermissionService(session)
+            if await perm2.mark_invitation_first_used(user_id):
+                try:
+                    await context.bot.send_message(
+                        chat_id=settings.ADMIN_TELEGRAM_ID,
+                        text=f"🎵 El usuario {username} (ID: {user_id}) ha empezado a usar su invitación por primera vez (aceptación)."
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not notify admin (first use): {e}")
+        api_ready = await AceStepService.is_api_ready()
+        if not api_ready:
+            await update.message.reply_text(
+                "En este momento el servicio de generación no está disponible. "
+                "Debes esperar a que se inicie; se ha notificado al administrador."
+            )
+            try:
+                await context.bot.send_message(
+                    chat_id=settings.ADMIN_TELEGRAM_ID,
+                    text=f"🎵 El usuario {username} (ID: {user_id}) quiere generar una canción pero el servicio no está activo. "
+                    "Puedes iniciarlo con /acestep_start y, si usan IA, /ollama_start."
+                )
+            except Exception as e:
+                logger.warning(f"Could not notify admin: {e}")
+            return ConversationHandler.END
+
     # Limpiar estado de intentos anteriores
     for key in ("song_style", "song_lyrics", "refine_target", "style_only", "song_theme", "song_lyrics_lang"):
         context.user_data.pop(key, None)
@@ -405,12 +574,23 @@ async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     if bus:
+        user_id = update.effective_user.id
+        username = (update.effective_user.username or "") and f"@{update.effective_user.username}" or str(user_id)
         await bus.publish("command", {
             "command": "acestep_generate",
             "source": f"chat_{update.effective_chat.id}",
             "prompt": style,
-            "lyrics": lyrics or ""
+            "lyrics": lyrics or "",
+            "user_id": user_id,
+            "username": username,
         })
+        async with AsyncSessionLocal() as session:
+            permission_service = PermissionService(session)
+            if await permission_service.get_user_role(user_id) == UserRole.GUEST:
+                if await permission_service.consume_song_quota(user_id):
+                    remaining = await permission_service.get_remaining_songs(user_id)
+                    if remaining is not None:
+                        await update.message.reply_text(f"Te quedan {remaining} canciones en tu cupo.")
     else:
         await update.message.reply_text("Error: Event bus no disponible.")
 
@@ -419,3 +599,17 @@ async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYP
 async def generate_song_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Generación cancelada.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
+
+
+async def save_admin_song_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Al pulsar 'Guardar en servidor' en la copia de canción enviada al admin."""
+    from app.core.config import settings
+    if update.callback_query.from_user.id != settings.ADMIN_TELEGRAM_ID:
+        await update.callback_query.answer("Solo el administrador puede guardar.", show_alert=True)
+        return
+    await update.callback_query.answer("Guardando en servidor...")
+    bus = context.bot_data.get("bus")
+    if not bus:
+        await update.callback_query.message.reply_text("Error: bus no disponible.")
+        return
+    await bus.publish("command", {"command": "acestep_save", "source": f"chat_{settings.ADMIN_TELEGRAM_ID}"})

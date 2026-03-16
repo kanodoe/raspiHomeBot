@@ -1,4 +1,7 @@
+import io
+import json
 from typing import Any, Dict
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.core.module import BaseModule
 from app.core.logging import logger
 
@@ -10,14 +13,14 @@ class Notifier(BaseModule):
 
     def __init__(self, bus, bot_app=None):
         super().__init__(bus)
-        self.bot_app = bot_app # telegram bot application
+        self.bot_app = bot_app  # telegram bot application
 
     async def start(self):
-        # Subscribing to all notification event types
         self.bus.subscribe("notify.info", self._send_notification)
         self.bus.subscribe("notify.error", self._send_notification)
         self.bus.subscribe("notify.status", self._send_notification)
         self.bus.subscribe("notify.audio", self._send_audio_notification)
+        self.bus.subscribe("notify.admin.song_generated", self._send_admin_song_copy)
         logger.info("Notifier module initialized.")
 
     async def _send_notification(self, data: Dict[str, Any]):
@@ -48,9 +51,56 @@ class Notifier(BaseModule):
             try:
                 chat_id = int(source.replace("chat_", ""))
                 logger.info(f"Sending Telegram audio to {chat_id}: {filename}")
-                import io
                 audio_file = io.BytesIO(audio_bytes)
                 audio_file.name = filename
                 await self.bot_app.bot.send_audio(chat_id=chat_id, audio=audio_file, caption=caption)
             except Exception as e:
                 logger.error(f"Failed to send Telegram audio: {e}")
+
+    async def _send_admin_song_copy(self, data: Dict[str, Any]):
+        """Envía al admin copia de la canción generada: quién, audio, JSON y opción de guardar."""
+        from app.core.config import settings
+        if not self.bot_app:
+            return
+        admin_id = settings.ADMIN_TELEGRAM_ID
+        audio_bytes = data.get("audio")
+        metadata = data.get("metadata", {})
+        task_id = data.get("task_id", "?")
+        filename = data.get("filename", "song.mp3")
+        user_id = data.get("user_id", "?")
+        username = data.get("username", str(user_id))
+        prompt = data.get("prompt", "")
+
+        caption = (
+            f"🎵 Canción generada por {username} (ID: {user_id})\n"
+            f"Estilo: {prompt[:200]}{'…' if len(prompt) > 200 else ''}\n\n"
+            "Puedes guardar en servidor con el botón de abajo o con /save_song."
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Guardar en servidor", callback_data="save_admin_song")]
+        ])
+        try:
+            audio_file = io.BytesIO(audio_bytes)
+            audio_file.name = filename
+            await self.bot_app.bot.send_audio(
+                chat_id=admin_id,
+                audio=audio_file,
+                caption=caption,
+                reply_markup=keyboard,
+            )
+            json_bytes = json.dumps(metadata, indent=2, ensure_ascii=False).encode("utf-8")
+            doc_file = io.BytesIO(json_bytes)
+            doc_file.name = f"song_{task_id}.json"
+            await self.bot_app.bot.send_document(
+                chat_id=admin_id,
+                document=doc_file,
+                caption="JSON devuelto por la API",
+            )
+            await self.bus.publish("cmd.acestep.cache_for_admin", {
+                "admin_chat_id": admin_id,
+                "audio": audio_bytes,
+                "metadata": metadata,
+                "task_id": task_id,
+            })
+        except Exception as e:
+            logger.error(f"Failed to send admin song copy: {e}")

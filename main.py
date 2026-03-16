@@ -15,6 +15,8 @@ from app.database.session import init_db, AsyncSessionLocal
 from app.services.permission_service import PermissionService
 from app.bot.handlers import (
     pc_on, pc_off, pc_status, status_summary, gate_open, invite, start,
+    invite_songs, solicitar_canciones, grant_songs, estado_invitaciones,
+    save_admin_song_callback,
     acestep_start, acestep_stop, acestep_save, ollama_start, ollama_stop,
     generate_song_start, generate_song_mode, generate_song_style,
     generate_song_lyrics_choice, generate_song_lyrics_text,
@@ -71,9 +73,13 @@ async def register_commands(bot):
             BotCommand("ollama_stop", "Detener Ollama"),
         ])
         
-    if "acestep" in enabled: # Generate song needs acestep
+    if "acestep" in enabled:
         commands.append(BotCommand("generate_song", "Generar una canción (AI)"))
-        
+        commands.append(BotCommand("invite_songs", "Invitación por cupo de canciones (Admin)"))
+        commands.append(BotCommand("grant_songs", "Dar más canciones a un usuario (Admin)"))
+        commands.append(BotCommand("solicitar_canciones", "Solicitar más cupo al administrador"))
+        commands.append(BotCommand("estado_invitaciones", "Ver estado de invitaciones (Admin)"))
+
     await bot.set_my_commands(commands)
     logger.info("Telegram bot commands registered in API.")
 
@@ -97,6 +103,11 @@ def setup_bot():
         application.add_handler(CommandHandler("acestep_start", acestep_start))
         application.add_handler(CommandHandler("acestep_stop", acestep_stop))
         application.add_handler(CommandHandler("save_song", acestep_save))
+        application.add_handler(CommandHandler("invite_songs", invite_songs))
+        application.add_handler(CommandHandler("grant_songs", grant_songs))
+        application.add_handler(CommandHandler("solicitar_canciones", solicitar_canciones))
+        application.add_handler(CommandHandler("estado_invitaciones", estado_invitaciones))
+        application.add_handler(CallbackQueryHandler(save_admin_song_callback, pattern="^save_admin_song$"))
 
     if "ollama" in enabled:
         application.add_handler(CommandHandler("ollama_start", ollama_start))

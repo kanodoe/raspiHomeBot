@@ -23,7 +23,20 @@ class AceStepController(BaseModule):
         self.bus.subscribe("cmd.ollama.stop", self._handle_ollama_stop)
         self.bus.subscribe("cmd.acestep.generate", self._handle_generate)
         self.bus.subscribe("cmd.acestep.save", self._handle_save)
+        self.bus.subscribe("cmd.acestep.cache_for_admin", self._handle_cache_for_admin)
         logger.info("AceStepController module initialized.")
+
+    async def _handle_cache_for_admin(self, data: Dict[str, Any]):
+        """Guarda la última canción enviada al admin para que pueda usar /save_song."""
+        admin_chat_id = data.get("admin_chat_id")
+        if admin_chat_id is None:
+            return
+        source = f"chat_{admin_chat_id}"
+        self.last_generated_songs[source] = {
+            "audio": data["audio"],
+            "metadata": data["metadata"],
+            "task_id": data["task_id"],
+        }
 
     async def _handle_start(self, data: Dict[str, Any]):
         source = data.get("source")
@@ -78,7 +91,9 @@ class AceStepController(BaseModule):
         source = data.get("source")
         prompt = data.get("prompt")
         lyrics = data.get("lyrics", "")
-        
+        user_id = data.get("user_id")
+        username = data.get("username") or (str(user_id) if user_id else "?")
+
         logger.info(f"AceStepController: Generating song (source: {source}, prompt: {prompt})")
         
         # Check if API is ready, if not, try to start it
@@ -120,14 +135,22 @@ class AceStepController(BaseModule):
                             "task_id": task_id
                         }
                         
-                        # We need a way to send the audio file back.
-                        # Notifier currently only supports text.
-                        # Let's publish a special event for audio.
                         await self.bus.publish("notify.audio", {
-                            "audio": audio_bytes, 
-                            "filename": f"song_{task_id}.mp3", 
+                            "audio": audio_bytes,
+                            "filename": f"song_{task_id}.mp3",
                             "source": source,
                             "caption": f"¡Aquí tienes tu canción!\nEstilo: {prompt}"
+                        })
+                        # Copia al admin: quién generó + audio + JSON para guardar
+                        await self.bus.publish("notify.admin.song_generated", {
+                            "audio": audio_bytes,
+                            "metadata": status_data,
+                            "task_id": task_id,
+                            "filename": f"song_{task_id}.mp3",
+                            "user_id": user_id,
+                            "username": username,
+                            "prompt": prompt,
+                            "lyrics": lyrics,
                         })
                         return
                 await self.bus.publish("notify.error", {"message": "Canción generada pero no se pudo obtener el audio.", "source": source})

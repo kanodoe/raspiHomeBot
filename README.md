@@ -111,8 +111,13 @@ graph TD
 - `/status`: Get a summary of the system state.
 - `/gate_open`: Open the gate (available for guests).
 - `/invite <user_id> <hours>h`: (Admin only) Grant temporary access to another user.
+- `/invite_songs <user_id> <cantidad> [horas]`: (Admin only) Invitar a un usuario con un cupo limitado de canciones (solo puede usar `/generate_song`).
+- `/grant_songs <user_id> <cantidad>`: (Admin only) Añadir más canciones al cupo de un invitado.
+- `/estado_invitaciones`: (Admin only) Ver estado de invitaciones: canciones generadas, restantes y expiración.
+- `/solicitar_canciones`: (Invitados con cupo) Solicitar más canciones al administrador.
 - `/acestep_start`: Start the ACE-Step API on the host machine.
 - `/acestep_stop`: Stop the ACE-Step API.
+- `/save_song`: Guardar la última canción generada en el servidor (audio + JSON).
 - `/ollama_start`: Start the Ollama server (requires `ollama` in PATH).
 - `/ollama_stop`: Stop the Ollama server (if started by the bot).
 - `/generate_song`: Interactive flow to create a song (Manual or AI-assisted).
@@ -169,6 +174,18 @@ Si prefieres seguir usando el archivo `.bat` directamente, en el equipo remoto (
 4. Ollama generará una propuesta de **Estilo** y **Letra** (formato compatible con ACE-Step).
 5. Puedes **Aceptar**, **Refinar** (pedir cambios específicos) o **Regenerar**.
 6. Una vez aceptado, se envía a ACE-Step. El bot te notificará cuando el audio esté listo y te lo enviará directamente.
+
+## Invitaciones por cupo de canciones y administrador
+
+Puedes invitar a otras personas con un **cupo limitado de canciones**: solo podrán usar el flujo de crear canción (`/generate_song` y `/solicitar_canciones`), no el resto de funciones del bot.
+
+- **Admin:** `/invite_songs <user_id> <cantidad>` crea la invitación. Cuando agoten el cupo, pueden usar `/solicitar_canciones`; tú les das más con `/grant_songs <user_id> <cantidad>`.
+- **Avisos al admin:** La primera vez que un invitado use `/generate_song` recibirás un mensaje de “aceptación”. Cada vez que alguien genere una canción, recibirás una **copia en privado**: audio, JSON de la API y botón **“Guardar en servidor”** (solo tú puedes guardar audio + JSON; el usuario solo descarga el MP3).
+- **Estado:** `/estado_invitaciones` muestra todas las invitaciones activas: quién, cuántas canciones ha generado, cuántas le quedan y fecha de expiración.
+
+**Limitación de Telegram:** No es posible que cada usuario vea un menú de comandos distinto (“su propia instancia”); todos ven la misma lista de `/`. El bot ya restringe por permisos: los invitados solo pueden usar los comandos de canciones.
+
+Documentación detallada: [docs/INVITACIONES_Y_ADMIN.md](docs/INVITACIONES_Y_ADMIN.md).
 
 ## Troubleshooting (Bot en contenedor + Windows remoto)
 

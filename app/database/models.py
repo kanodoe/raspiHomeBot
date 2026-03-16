@@ -31,3 +31,7 @@ class Invitation(Base):
     invitee_username: Mapped[Optional[str]] = mapped_column(nullable=True)
     expiration_time: Mapped[datetime] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    # Invitación por cupo de canciones: song_quota != null => solo puede usar generate_song hasta agotar cupo
+    song_quota: Mapped[Optional[int]] = mapped_column(nullable=True, default=None)
+    songs_used: Mapped[int] = mapped_column(default=0)
+    first_used_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, default=None)
