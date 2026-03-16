@@ -25,7 +25,7 @@ from app.modules.gate_controller import GateController
 from app.modules.permission_controller import PermissionController
 
 # Telegram Bot Setup
-async def post_init(application):
+async def register_commands(bot):
     commands = [
         BotCommand("start", "Ver mi ID y estado del bot"),
         BotCommand("pc_on", "Encender PC (WOL)"),
@@ -35,11 +35,11 @@ async def post_init(application):
         BotCommand("gate_open", "Abrir el portón (Invitados)"),
         BotCommand("invite", "Invitar usuario (Admin)")
     ]
-    await application.bot.set_my_commands(commands)
-    logger.info("Telegram bot commands registered.")
+    await bot.set_my_commands(commands)
+    logger.info("Telegram bot commands registered in API.")
 
 def setup_bot():
-    application = ApplicationBuilder().token(settings.BOT_TOKEN).post_init(post_init).build()
+    application = ApplicationBuilder().token(settings.BOT_TOKEN).build()
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("pc_on", pc_on))
@@ -93,6 +93,7 @@ async def lifespan(app: FastAPI):
     notifier.bot_app = application
     application.bot_data["bus"] = bus
     await application.initialize()
+    await register_commands(application.bot)
     await application.start()
     await application.updater.start_polling()
     

@@ -28,6 +28,8 @@ class CommandRouter(BaseModule):
         mapping = {
             "pc_on": "cmd.pc.on",
             "pc_off": "cmd.pc.off",
+            "pc_status": "cmd.pc.status",
+            "status": "cmd.status.summary",
             "gate_open": "cmd.gate.open",
             "zigbee_set": "cmd.zigbee.set",
             "arlo_status": "cmd.arlo.status"
