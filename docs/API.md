@@ -21,6 +21,9 @@ Todos bajo el prefijo `/api`, método GET.
 | `GET /api/users` | Lista usuarios | `telegram_id`, `role`, `limit`, `offset` |
 | `GET /api/users/{telegram_id}` | Detalle de un usuario | — |
 | `GET /api/invitations` | Lista invitaciones | `access_type`, `invitee_telegram_id`, `expired`, `limit`, `offset` |
+| `GET /api/invitations/{id}/leave-message` | Mensaje de salida para el invitee (revocación / no uso) | — |
+| `DELETE /api/invitations/{id}` | Revoca invitación por id (elimina invitación y cuota asociada) | — |
+| `POST /api/invitations/{id}/register-guest` | Crea/actualiza User GUEST para el invitee (para que aparezca en usuarios) | — |
 | `GET /api/quotas` | Lista cuotas por usuario/acción | `telegram_id`, `access_type`, `limit`, `offset` |
 | `GET /api/operations` | Lista operaciones (gate_opened, song_generated) | `telegram_id`, `operation_type`, `since`, `until`, `limit`, `offset` |
 | `GET /api/access-requests` | Lista solicitudes de más acceso | `status`, `telegram_id`, `limit`, `offset` |
@@ -38,6 +41,12 @@ En `docs/api/raspiHomeBot-api.postman_collection.json` tienes una colección Pos
 
 - **base_url**: URL base del servicio (p. ej. `http://localhost:8000`).
 - **api_key**: Si está definido `API_KEY` en el servidor, pon aquí el mismo valor y activa el header `X-Api-Key` en cada request (en la colección viene desactivado por defecto para entornos sin API key).
+
+## Gestión de invitaciones
+
+- **`GET /api/invitations/{id}/leave-message`**: Devuelve un mensaje de salida para enviar al invitado cuando se revoca la invitación o no se usa, junto con `invitee_telegram_id`, `invitee_display`, etc., para que el admin sepa a quién enviarlo.
+- **`DELETE /api/invitations/{id}`**: Revoca la invitación con ese id (elimina la fila de invitación y la cuota UserQuota asociada). El invitado pierde el acceso. Responde 204 si existía, 404 si no.
+- **`POST /api/invitations/{id}/register-guest`**: Crea o actualiza el usuario (User con role GUEST) para el invitee de esa invitación. Sirve para que un invitado que ya tiene invitación en la BD pero no aparecía en “usuarios registrados” pase a aparecer y pueda usar el sistema (p. ej. invitaciones creadas antes de tener `ensure_guest` al abrir el enlace).
 
 ## Otros endpoints
 

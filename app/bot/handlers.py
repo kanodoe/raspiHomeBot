@@ -138,6 +138,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     invitee_first_name=user.first_name,
                     invitee_last_name=user.last_name,
                 )
+                await permission_service.ensure_guest(
+                    user_id,
+                    username=user.username,
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                )
             from app.utils.user_display import format_user_display
             display = format_user_display(
                 first_name=user.first_name,
@@ -195,6 +201,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     duration_hours=duration_hours,
                     invitee_first_name=user.first_name,
                     invitee_last_name=user.last_name,
+                )
+                await permission_service.ensure_guest(
+                    user_id,
+                    username=user.username,
+                    first_name=user.first_name,
+                    last_name=user.last_name,
                 )
             from app.utils.user_display import format_user_display
             display = format_user_display(

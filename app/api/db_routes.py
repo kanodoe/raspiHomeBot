@@ -1,14 +1,15 @@
-"""Endpoints de solo lectura para consultar la base de datos (users, invitations, quotas, operations, access_requests)."""
+"""Endpoints para consultar la base de datos (users, invitations, quotas, operations, access_requests) y gestionar invitaciones."""
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import get_db, AsyncSessionLocal
 from app.database.models import User, Invitation, UserQuota, UserOperation, AccessRequest
 from app.core.config import settings
+from app.services.permission_service import PermissionService
 
 router = APIRouter(prefix="/api", tags=["db"])
 
@@ -113,6 +114,91 @@ async def list_invitations(
         ],
         "limit": limit,
         "offset": offset,
+    }
+
+
+@router.get("/invitations/{invitation_id}/leave-message", dependencies=[Depends(require_api_key)])
+async def get_invitation_leave_message(
+    invitation_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Genera un mensaje de salida para enviar al invitado cuando se revoca o no se usa la invitación.
+    Devuelve el texto del mensaje y los datos del invitee para que el admin sepa a quién enviarlo.
+    """
+    result = await db.execute(select(Invitation).where(Invitation.id == invitation_id))
+    inv = result.scalar_one_or_none()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    access_type = inv.access_type or ("song" if inv.song_quota is not None else "gate")
+    if access_type == "song":
+        message = (
+            "Tu invitación al bot de canciones ha sido revocada o ha finalizado. "
+            "Si crees que es un error, contacta al administrador."
+        )
+    else:
+        message = (
+            "Tu acceso al portón ha sido revocado o ha finalizado. "
+            "Si crees que es un error, contacta al administrador."
+        )
+    display = inv.invitee_username or f"ID {inv.invitee_telegram_id}"
+    if inv.invitee_first_name or inv.invitee_last_name:
+        display = " ".join(filter(None, [inv.invitee_first_name, inv.invitee_last_name])) or display
+    return {
+        "message": message,
+        "invitation_id": inv.id,
+        "invitee_telegram_id": inv.invitee_telegram_id,
+        "invitee_username": inv.invitee_username,
+        "invitee_first_name": inv.invitee_first_name,
+        "invitee_last_name": inv.invitee_last_name,
+        "invitee_display": display,
+        "access_type": access_type,
+    }
+
+
+@router.delete("/invitations/{invitation_id}", dependencies=[Depends(require_api_key)])
+async def delete_invitation(
+    invitation_id: int,
+):
+    """
+    Revoca una invitación por id: elimina la invitación y la cuota asociada (UserQuota).
+    El invitado pierde el acceso. Devuelve 204 si se revocó, 404 si no existía.
+    """
+    async with AsyncSessionLocal() as session:
+        permission_service = PermissionService(session)
+        revoked = await permission_service.revoke_invitation(invitation_id)
+    if not revoked:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    return Response(status_code=204)
+
+
+@router.post("/invitations/{invitation_id}/register-guest", dependencies=[Depends(require_api_key)])
+async def register_guest_from_invitation(
+    invitation_id: int,
+):
+    """
+    Crea o actualiza el usuario (User con role GUEST) para el invitee de esta invitación.
+    Útil cuando la invitación existe pero el invitado no aparece en usuarios (p. ej. enlaces abiertos antes de tener ensure_guest).
+    Devuelve los datos del usuario creado/actualizado.
+    """
+    async with AsyncSessionLocal() as session:
+        permission_service = PermissionService(session)
+        inv = await permission_service.get_invitation_by_id(invitation_id)
+        if not inv:
+            raise HTTPException(status_code=404, detail="Invitation not found")
+        user = await permission_service.ensure_guest(
+            inv.invitee_telegram_id,
+            username=inv.invitee_username,
+            first_name=inv.invitee_first_name,
+            last_name=inv.invitee_last_name,
+        )
+    return {
+        "id": user.id,
+        "telegram_id": user.telegram_id,
+        "username": user.username,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "role": user.role.value if hasattr(user.role, "value") else user.role,
     }
 
 

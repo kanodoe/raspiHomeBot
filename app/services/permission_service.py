@@ -111,6 +111,37 @@ class PermissionService:
                 user.last_name = last_name
             await self.db.commit()
 
+    async def ensure_guest(
+        self,
+        telegram_id: int,
+        username: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+    ) -> User:
+        """Crea o actualiza un usuario con role GUEST para que aparezca en usuarios registrados y los permisos funcionen por User."""
+        stmt = select(User).where(User.telegram_id == telegram_id)
+        result = await self.db.execute(stmt)
+        user = result.scalar_one_or_none()
+        if not user:
+            user = User(
+                telegram_id=telegram_id,
+                role=UserRole.GUEST,
+                username=username or f"User_{telegram_id}",
+                first_name=first_name,
+                last_name=last_name,
+            )
+            self.db.add(user)
+            await self.db.commit()
+        else:
+            if username is not None:
+                user.username = username
+            if first_name is not None:
+                user.first_name = first_name
+            if last_name is not None:
+                user.last_name = last_name
+            await self.db.commit()
+        return user
+
     async def _get_song_quota(self, telegram_id: int) -> Optional[UserQuota]:
         """UserQuota activo para canciones (quota > used)."""
         stmt = select(UserQuota).where(
@@ -377,6 +408,34 @@ class PermissionService:
                 "first_used_at": first_used,
             })
         return out
+
+    async def get_invitation_by_id(self, invitation_id: int) -> Optional[Invitation]:
+        """Devuelve una invitación por su id, o None si no existe."""
+        stmt = select(Invitation).where(Invitation.id == invitation_id)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def revoke_invitation(self, invitation_id: int) -> bool:
+        """
+        Revoca una invitación por id: elimina la fila Invitation y la cuota asociada (UserQuota)
+        del invitee para ese access_type, de modo que pierde el acceso.
+        Devuelve True si se revocó, False si no existía.
+        """
+        inv = await self.get_invitation_by_id(invitation_id)
+        if not inv:
+            return False
+        invitee_id = inv.invitee_telegram_id
+        access_type = inv.access_type or ("song" if inv.song_quota is not None else "gate")
+        self.db.delete(inv)
+        stmt_q = select(UserQuota).where(
+            and_(UserQuota.telegram_id == invitee_id, UserQuota.access_type == access_type)
+        )
+        rq = await self.db.execute(stmt_q)
+        quota = rq.scalar_one_or_none()
+        if quota:
+            self.db.delete(quota)
+        await self.db.commit()
+        return True
 
     # --- Invitaciones por portón (acceso por N días) ---
 
