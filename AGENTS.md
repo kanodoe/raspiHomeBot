@@ -30,7 +30,7 @@ Este documento describe el proyecto para que los agentes (Cursor, Copilot, etc.)
 
 - El bot corre en Linux (contenedor); ACE-Step y Ollama corren en un PC Windows. La comunicación con el host es por **HTTP** (cuando los servicios escuchan en `0.0.0.0`) y por **SSH** (para arrancar/parar procesos).
 - **Detección:** “¿Está la API lista?” se hace por **HTTP** (p. ej. `GET` a `ACESTEP_HOST:8001` o `OLLAMA_BASE_URL/api/tags`). Si el servicio en Windows está vinculado a `127.0.0.1`, el contenedor no puede conectarse y la comprobación falla.
-- **Puerto en uso:** Si, vía SSH, se detecta que el puerto (8001 o 11434) está en uso en el host, el bot **no** debe matar ese proceso. Debe devolver error con un mensaje claro para el usuario (configurar `HOST=0.0.0.0` en `start_api_server.bat` o `OLLAMA_HOST=0.0.0.0`, y firewall). Esta regla ya está implementada en `AceStepService.start_api()` y `OllamaService.start_ollama()`.
+- **Puerto en uso:** Si, vía SSH, se detecta que el puerto (8001 o 11434) está en uso en el host, el bot **no** debe matar ese proceso. Debe devolver error con un mensaje claro para el usuario (configurar `HOST=0.0.0.0` en `start_api_server_docker_remote.bat` o `OLLAMA_HOST=0.0.0.0`, y firewall). Esta regla ya está implementada en `AceStepService.start_api()` y `OllamaService.start_ollama()`.
 
 ## Prompts y formato ACE-Step
 

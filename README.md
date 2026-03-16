@@ -160,7 +160,7 @@ Si experimentas problemas de conectividad o firewall, la forma más robusta de c
 2. Crea un contenedor mapeando el puerto 8001: `-p 8001:8001`.
 3. Esto asegura que la API escuche en todas las interfaces (`0.0.0.0`) y facilita la comunicación con la Raspberry Pi.
 
-Si prefieres seguir usando el archivo `.bat` directamente, en el equipo remoto (Windows) edita `start_api_server.bat` del [repositorio oficial de ACE-Step 1.5](https://github.com/ace-step/ACE-Step-1.5): cambia `set HOST=127.0.0.1` por `set HOST=0.0.0.0` para que la API sea accesible desde el contenedor. Permite el puerto 8001 en el **Firewall de Windows** para conexiones entrantes.
+Si prefieres seguir usando el archivo `.bat` directamente, en el equipo remoto (Windows) edita `start_api_server_docker_remote.bat` del [repositorio oficial de ACE-Step 1.5](https://github.com/ace-step/ACE-Step-1.5): cambia `set HOST=127.0.0.1` por `set HOST=0.0.0.0` para que la API sea accesible desde el contenedor. Permite el puerto 8001 en el **Firewall de Windows** para conexiones entrantes.
 
 ### Flujo de Generación de Canción
 1. Ejecuta `/generate_song`.
@@ -178,7 +178,7 @@ Si prefieres seguir usando el archivo `.bat` directamente, en el equipo remoto (
 
 ### La API de ACE-Step o Ollama “no se ve” desde el bot
 - **Causa habitual:** El servicio está escuchando en `127.0.0.1` (solo localhost). Desde el contenedor no se puede conectar.
-- **Solución:** En el PC Windows donde corre ACE-Step, edita `start_api_server.bat` y pon `set HOST=0.0.0.0`. Para Ollama, inicia el servicio con `OLLAMA_HOST=0.0.0.0` (o configúralo en el sistema). Abre el puerto correspondiente (8001 para ACE-Step, 11434 para Ollama) en el Firewall de Windows.
+- **Solución:** En el PC Windows donde corre ACE-Step, edita `start_api_server_docker_remote.bat` y pon `set HOST=0.0.0.0`. Para Ollama, inicia el servicio con `OLLAMA_HOST=0.0.0.0` (o configúralo en el sistema). Abre el puerto correspondiente (8001 para ACE-Step, 11434 para Ollama) en el Firewall de Windows.
 - **Importante:** Si la API ya está en ejecución y el bot no la ve, el bot **no** intentará matar el proceso; te indicará que configures `HOST=0.0.0.0` y el firewall.
 
 ### El bot intenta iniciar la API y no la ve / “ya estaba corriendo”

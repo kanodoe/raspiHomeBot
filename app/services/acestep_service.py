@@ -30,14 +30,14 @@ class AceStepService:
         """
         Start the ACE-Step API. Returns (success, error_message).
         If the port is already in use on the remote host, we do NOT kill the process;
-        we return False with a message asking the user to set HOST=0.0.0.0 in start_api_server.bat.
+        we return False with a message asking the user to set HOST=0.0.0.0 in start_api_server_docker_remote.bat.
         """
         if await cls.is_api_ready():
             logger.info("ACE-Step API is already running.")
             return True, None
 
         # Prepare the path for the bat file
-        bat_name = "start_api_server.bat"
+        bat_name = "start_api_server_docker_remote.bat"
         if os.name != 'nt' and (":" in settings.ACESTEP_PATH or settings.ACESTEP_PATH.startswith("\\")):
             # Construct Windows path string on POSIX
             path_cleaned = settings.ACESTEP_PATH.rstrip("/\\")
@@ -66,7 +66,7 @@ class AceStepService:
             if await cls.is_port_listening_remotely(ssh_host, settings.ACESTEP_PORT):
                 msg = (
                     f"La API de ACE-Step parece estar en ejecución en el equipo remoto ({ssh_host}:{settings.ACESTEP_PORT}) "
-                    "pero no es accesible desde aquí. Configura start_api_server.bat con HOST=0.0.0.0 y permite "
+                    "pero no es accesible desde aquí. Configura start_api_server_docker_remote.bat con HOST=0.0.0.0 y permite "
                     f"el puerto {settings.ACESTEP_PORT} en el firewall de Windows."
                 )
                 logger.warning(msg)
@@ -99,7 +99,7 @@ class AceStepService:
                                    "Check Windows Firewall rules for port {settings.ACESTEP_PORT}.")
                 
                 logger.warning("ACE-Step API started via SSH but is not responding yet (timed out after 60s).")
-                return False, "La API de ACE-Step se inició pero no respondió a tiempo. Revisa el firewall y que HOST=0.0.0.0 en start_api_server.bat."
+                return False, "La API de ACE-Step se inició pero no respondió a tiempo. Revisa el firewall y que HOST=0.0.0.0 en start_api_server_docker_remote.bat."
             return False, "No se pudo ejecutar el comando SSH para iniciar ACE-Step. Revisa la conexión y las credenciales."
 
         if not Path(bat_path_str).exists() and os.name == 'nt':
@@ -224,7 +224,7 @@ class AceStepService:
             
             if await cls.is_port_listening_remotely(ssh_host, settings.ACESTEP_PORT):
                 logger.warning(f"ACE-Step API IS LISTENING on remote host {ssh_host}:{settings.ACESTEP_PORT} via SSH, but is NOT REACHABLE via HTTP from this container. "
-                               "This usually means it's bound to 127.0.0.1 in start_api_server.bat (change to 0.0.0.0) or blocked by Windows Firewall.")
+                               "This usually means it's bound to 127.0.0.1 in start_api_server_docker_remote.bat (change to 0.0.0.0) or blocked by Windows Firewall.")
         
         return False
 
