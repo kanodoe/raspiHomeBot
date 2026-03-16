@@ -17,6 +17,36 @@ from telegram.ext import CallbackQueryHandler, ConversationHandler, MessageHandl
 # Conversation states for generate_song
 MODE_SELECT, STYLE, LYRICS_CHOICE, LYRICS_TEXT, AI_PROMPT, AI_REVIEW, LYRICS_OR_STYLE, AI_LANGUAGE = range(8)
 
+
+async def end_conversation_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Fallback del ConversationHandler: ante cualquier comando, termina la conversación sin responder.
+    El comando lo atiende el handler del grupo 0 (invite_link, etc.).
+    """
+    return ConversationHandler.END
+
+
+async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Manejador global de errores del bot. Registra la excepción y, si hay chat, envía un mensaje al usuario.
+    """
+    logger.exception("Excepción no capturada en el bot (error_handler): %s", context.error)
+    chat_id = None
+    if update is not None:
+        if getattr(update, "effective_chat", None) is not None:
+            chat_id = update.effective_chat.id
+        elif getattr(update, "callback_query", None) is not None and getattr(update.callback_query, "message", None):
+            chat_id = update.callback_query.message.chat.id
+    if chat_id is not None and context.bot is not None:
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Ha ocurrido un error inesperado. Inténtalo de nuevo o usa /cancel si estabas en un flujo.",
+            )
+        except Exception as send_err:
+            logger.warning("No se pudo enviar mensaje de error al usuario: %s", send_err)
+
+
 def restricted(role: UserRole):
     def decorator(func):
         @wraps(func)
@@ -940,7 +970,7 @@ async def generate_song_ai_prompt(update: Update, context: ContextTypes.DEFAULT_
             msg = suggestions.get("message", "El modelo configurado no está instalado en Ollama.")
             await update.message.reply_text(f"❌ {msg}\n\nPuedes usar /generate_song y elegir **Manual**.", parse_mode="Markdown")
             return ConversationHandler.END
-        await _send_suggestion_and_review(update, context, suggestions, style_only=True)
+        await _send_suggestion_and_review(update, context, suggestions, is_style_only=True)
         return AI_REVIEW
 
     # Con letra: pedir idioma con InlineKeyboard

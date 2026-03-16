@@ -18,6 +18,8 @@ from app.bot.handlers import (
     pc_on, pc_off, pc_status, status_summary, gate_open, gate_entrada, gate_salida, invite, start,
     invite_link, invite_link_gate, invite_gate, invite_songs, solicitar_canciones, grant_songs, estado_invitaciones,
     save_admin_song_callback,
+    end_conversation_on_command,
+    telegram_error_handler,
     acestep_start, acestep_stop, acestep_save, ollama_start, ollama_stop,
     generate_song_start, generate_song_mode, generate_song_style,
     generate_song_lyrics_choice, generate_song_lyrics_text,
@@ -164,35 +166,42 @@ def setup_bot():
     mode = get_bot_mode()
     token = get_bot_token_for_mode(mode)
     application = ApplicationBuilder().token(token).post_init(_post_init).build()
+    application.add_error_handler(telegram_error_handler)
 
-    application.add_handler(CommandHandler("start", start))
+    # Grupo 0: comandos que deben ejecutarse siempre (incluso si el usuario está en una conversación).
+    # Grupo 1: ConversationHandler de generate_song. Así /invite_link (y otros) funcionan aunque
+    # el usuario haya entrado antes en el flujo de generar canción.
+    GROUP_COMMANDS = 0
+    GROUP_CONVERSATION = 1
+
+    application.add_handler(CommandHandler("start", start), GROUP_COMMANDS)
 
     if mode == "admin":
-        application.add_handler(CommandHandler("status", status_summary))
+        application.add_handler(CommandHandler("status", status_summary), GROUP_COMMANDS)
         if "pc" in enabled:
-            application.add_handler(CommandHandler("pc_on", pc_on))
-            application.add_handler(CommandHandler("pc_off", pc_off))
-            application.add_handler(CommandHandler("pc_status", pc_status))
+            application.add_handler(CommandHandler("pc_on", pc_on), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("pc_off", pc_off), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("pc_status", pc_status), GROUP_COMMANDS)
         if "gate" in enabled:
-            application.add_handler(CommandHandler("gate_open", gate_open))
-            application.add_handler(CommandHandler("entrada", gate_entrada))
-            application.add_handler(CommandHandler("salida", gate_salida))
-            application.add_handler(CommandHandler("invite", invite))
-            application.add_handler(CommandHandler("gate_invite_link", invite_link_gate))
-            application.add_handler(CommandHandler("gate_invite", invite_gate))
+            application.add_handler(CommandHandler("gate_open", gate_open), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("entrada", gate_entrada), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("salida", gate_salida), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("invite", invite), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("gate_invite_link", invite_link_gate), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("gate_invite", invite_gate), GROUP_COMMANDS)
         if "acestep" in enabled:
-            application.add_handler(CommandHandler("acestep_start", acestep_start))
-            application.add_handler(CommandHandler("acestep_stop", acestep_stop))
-            application.add_handler(CommandHandler("save_song", acestep_save))
-            application.add_handler(CommandHandler("invite_link", invite_link))
-            application.add_handler(CommandHandler("invite_songs", invite_songs))
-            application.add_handler(CommandHandler("grant_songs", grant_songs))
-            application.add_handler(CommandHandler("request_songs", solicitar_canciones))
-            application.add_handler(CommandHandler("invitations_status", estado_invitaciones))
-            application.add_handler(CallbackQueryHandler(save_admin_song_callback, pattern="^save_admin_song$"))
+            application.add_handler(CommandHandler("acestep_start", acestep_start), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("acestep_stop", acestep_stop), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("save_song", acestep_save), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("invite_link", invite_link), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("invite_songs", invite_songs), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("grant_songs", grant_songs), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("request_songs", solicitar_canciones), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("invitations_status", estado_invitaciones), GROUP_COMMANDS)
+            application.add_handler(CallbackQueryHandler(save_admin_song_callback, pattern="^save_admin_song$"), GROUP_COMMANDS)
         if "ollama" in enabled:
-            application.add_handler(CommandHandler("ollama_start", ollama_start))
-            application.add_handler(CommandHandler("ollama_stop", ollama_stop))
+            application.add_handler(CommandHandler("ollama_start", ollama_start), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("ollama_stop", ollama_stop), GROUP_COMMANDS)
         if "acestep" in enabled:
             conv_handler = ConversationHandler(
                 entry_points=[CommandHandler("generate_song", generate_song_start)],
@@ -209,19 +218,21 @@ def setup_bot():
                     LYRICS_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_lyrics_choice)],
                     LYRICS_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_lyrics_text)],
                 },
-                fallbacks=[CommandHandler("cancel", generate_song_cancel)],
+                fallbacks=[
+                    CommandHandler("cancel", generate_song_cancel),
+                    MessageHandler(filters.COMMAND, end_conversation_on_command),
+                ],
             )
-            application.add_handler(conv_handler)
+            application.add_handler(conv_handler, GROUP_CONVERSATION)
     elif mode == "songs":
-        application.add_handler(CommandHandler("request_songs", solicitar_canciones))
-        # Admin en el bot de canciones: invitaciones y estado (los comandos están restringidos a ADMIN)
-        application.add_handler(CommandHandler("invite_link", invite_link))
-        application.add_handler(CommandHandler("invite_songs", invite_songs))
-        application.add_handler(CommandHandler("grant_songs", grant_songs))
-        application.add_handler(CommandHandler("invitations_status", estado_invitaciones))
+        application.add_handler(CommandHandler("request_songs", solicitar_canciones), GROUP_COMMANDS)
+        application.add_handler(CommandHandler("invite_link", invite_link), GROUP_COMMANDS)
+        application.add_handler(CommandHandler("invite_songs", invite_songs), GROUP_COMMANDS)
+        application.add_handler(CommandHandler("grant_songs", grant_songs), GROUP_COMMANDS)
+        application.add_handler(CommandHandler("invitations_status", estado_invitaciones), GROUP_COMMANDS)
         if "acestep" in enabled:
-            application.add_handler(CommandHandler("save_song", acestep_save))
-            application.add_handler(CallbackQueryHandler(save_admin_song_callback, pattern="^save_admin_song$"))
+            application.add_handler(CommandHandler("save_song", acestep_save), GROUP_COMMANDS)
+            application.add_handler(CallbackQueryHandler(save_admin_song_callback, pattern="^save_admin_song$"), GROUP_COMMANDS)
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler("generate_song", generate_song_start)],
             states={
@@ -237,13 +248,16 @@ def setup_bot():
                 LYRICS_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_lyrics_choice)],
                 LYRICS_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_lyrics_text)],
             },
-            fallbacks=[CommandHandler("cancel", generate_song_cancel)],
+            fallbacks=[
+                CommandHandler("cancel", generate_song_cancel),
+                MessageHandler(filters.COMMAND, end_conversation_on_command),
+            ],
         )
-        application.add_handler(conv_handler)
+        application.add_handler(conv_handler, GROUP_CONVERSATION)
     elif mode == "gate":
-        application.add_handler(CommandHandler("gate_open", gate_open))
-        application.add_handler(CommandHandler("entrada", gate_entrada))
-        application.add_handler(CommandHandler("salida", gate_salida))
+        application.add_handler(CommandHandler("gate_open", gate_open), GROUP_COMMANDS)
+        application.add_handler(CommandHandler("entrada", gate_entrada), GROUP_COMMANDS)
+        application.add_handler(CommandHandler("salida", gate_salida), GROUP_COMMANDS)
 
     return application
 

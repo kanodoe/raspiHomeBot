@@ -50,7 +50,7 @@ Módulos disponibles:
 
 ### Modo multi-bot (BOT_MODE)
 
-Puedes ejecutar el mismo código en tres modos con `BOT_MODE=admin|songs|gate` (por defecto `admin`). En `admin` se registran todos los comandos; en `songs` solo start, generate_song y request_songs; en `gate` solo start, gate_open, entrada y salida. Cada proceso usa su propio token: `BOT_TOKEN_ADMIN`, `BOT_TOKEN_SONGS`, `BOT_TOKEN_GATE` (si no se define el del modo, se usa `BOT_TOKEN`). Los enlaces de invitación pueden apuntar a bots distintos con `SONGS_BOT_USERNAME` y `GATE_BOT_USERNAME`. Ver [docs/INVITACIONES_Y_ADMIN.md](docs/INVITACIONES_Y_ADMIN.md).
+Puedes ejecutar el mismo código en tres modos con `BOT_MODE=admin|songs|gate` (por defecto `admin`). **Cada bot (admin, canciones, portón) debe correr en su propio proceso o contenedor:** si solo levantas uno con `BOT_MODE=admin`, el bot de canciones (p. ej. t.me/raspi_song_bot) no tendrá comandos ni responderá hasta que levantes otro proceso con `BOT_MODE=songs`. Con `docker-compose up -d` se levantan los servicios `homebot` (admin) y `homebot-songs` (bot de canciones). Cada proceso usa su propio token: `BOT_TOKEN_ADMIN`, `BOT_TOKEN_SONGS`, `BOT_TOKEN_GATE` (si no se define el del modo, se usa `BOT_TOKEN`). Los enlaces de invitación pueden apuntar a bots distintos con `SONGS_BOT_USERNAME` y `GATE_BOT_USERNAME`. Ver [docs/INVITACIONES_Y_ADMIN.md](docs/INVITACIONES_Y_ADMIN.md).
 
 ### API de consulta
 

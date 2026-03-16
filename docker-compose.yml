@@ -1,3 +1,6 @@
+# Para que el bot de canciones (t.me/raspi_song_bot) tenga comandos y responda,
+# debe correr un proceso con BOT_MODE=songs. Mismo código, otro contenedor.
+# Levanta ambos: docker-compose up -d
 services:
   homebot:
     build: .
@@ -13,4 +16,19 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////app/data/home_automation.db
+      - BOT_MODE=admin
     network_mode: host # Crucial for WOL to work on local network from container
+
+  homebot-songs:
+    build: .
+    container_name: raspi-home-bot-songs
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./.env:/app/.env
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/home_automation.db
+      - BOT_MODE=songs
+    network_mode: host
