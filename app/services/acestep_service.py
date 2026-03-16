@@ -57,11 +57,24 @@ class AceStepService:
             if ssh_host in ("localhost", "127.0.0.1", "0.0.0.0"):
                 ssh_host = settings.PC_IP # Fallback to PC_IP if host is set to local on Docker
             
+            # Check if port is already in use (possibly by a 127.0.0.1 bound instance)
+            if await cls.is_port_listening_remotely(ssh_host, settings.ACESTEP_PORT):
+                logger.info(f"Port {settings.ACESTEP_PORT} is already in use on {ssh_host} but API is not reachable via HTTP. "
+                            "Attempting to stop existing process to ensure clean start with 0.0.0.0 binding...")
+                await cls.stop_api()
+
             from app.utils.ssh import run_ssh_command
             logger.info(f"Attempting to start ACE-Step remotely on {ssh_host} via SSH (Windows path on {os.name})...")
-            # We use powershell Start-Process to launch it in background and return immediately
-            # Using absolute path for bat if possible and ensuring .\\ is used
-            cmd = f'powershell -Command "Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false && .\\{bat_name}\' -WorkingDirectory \'{ace_path_str}\' -WindowStyle Hidden"'
+            
+            # We use powershell to create a temporary .bat that forces HOST=0.0.0.0 
+            # if the original has it hardcoded to 127.0.0.1
+            docker_bat = "start_api_server_docker.bat"
+            cmd = (
+                f'powershell -Command "cd \'{ace_path_str}\'; '
+                f'(Get-Content .\\{bat_name}) -replace \'set HOST=127.0.0.1\', \'set HOST=0.0.0.0\' | Set-Content .\\{docker_bat}; '
+                f'Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false && .\\{docker_bat}\' -WorkingDirectory \'{ace_path_str}\' -WindowStyle Hidden"'
+            )
+            
             if await run_ssh_command(cmd, ssh_host):
                 # Wait for it to be ready
                 logger.info("SSH command sent. Waiting up to 60s for API to be ready...")
@@ -70,6 +83,12 @@ class AceStepService:
                     if await cls.is_api_ready(): 
                         logger.info(f"ACE-Step API is ready (via SSH) after {i*2}s.")
                         return True
+                
+                # Check if it is at least listening (diagnostics)
+                if await cls.is_port_listening_remotely(ssh_host, settings.ACESTEP_PORT):
+                    logger.warning(f"ACE-Step API is listening on {ssh_host}:{settings.ACESTEP_PORT} but still NOT REACHABLE via HTTP. "
+                                   "Check Windows Firewall rules for port {settings.ACESTEP_PORT}.")
+                
                 logger.warning("ACE-Step API started via SSH but is not responding yet (timed out after 60s).")
                 return False
             return False
@@ -152,23 +171,52 @@ class AceStepService:
             return False
 
     @classmethod
+    async def is_port_listening_remotely(cls, host: str, port: int) -> bool:
+        """
+        Check via SSH if the port is listening on the remote host.
+        """
+        from app.utils.ssh import run_ssh_command
+        # Netstat command that returns exit code 0 if found, 1 otherwise
+        cmd = f'powershell -Command "netstat -ano | findstr LISTENING | findstr :{port}"'
+        return await run_ssh_command(cmd, host)
+
+    @classmethod
     async def is_api_ready(cls) -> bool:
         base_url = cls.get_base_url()
         # Try a few endpoints that might be available
+        is_http_ready = False
         for endpoint in ["/docs", "/"]:
             url = f"{base_url}{endpoint}"
             try:
                 async with httpx.AsyncClient() as client:
                     # Probing the API. If we get any response, it's listening.
                     response = await client.get(url, timeout=3.0)
-                    return True
+                    is_http_ready = True
+                    break
             except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
                 logger.debug(f"ACE-Step API not ready at {url}: {type(e).__name__}")
             except Exception as e:
                 # Other errors like 405 Method Not Allowed or 404 Not Found 
                 # still mean the server is there.
                 logger.debug(f"ACE-Step API responded with error at {url} (but it is listening): {e}")
-                return True
+                is_http_ready = True
+                break
+        
+        if is_http_ready:
+            return True
+            
+        # If HTTP fails, check if we are in Docker and API is on Windows host
+        # Construct path cleaned similar to start_api to detect remote Windows path
+        is_windows_path = ":" in settings.ACESTEP_PATH or settings.ACESTEP_PATH.startswith("\\")
+        if os.name != 'nt' and is_windows_path:
+            ssh_host = settings.ACESTEP_HOST
+            if ssh_host in ("localhost", "127.0.0.1", "0.0.0.0"):
+                ssh_host = settings.PC_IP
+            
+            if await cls.is_port_listening_remotely(ssh_host, settings.ACESTEP_PORT):
+                logger.warning(f"ACE-Step API IS LISTENING on remote host {ssh_host}:{settings.ACESTEP_PORT} via SSH, but is NOT REACHABLE via HTTP from this container. "
+                               "This usually means it's bound to 127.0.0.1 in start_api_server.bat (change to 0.0.0.0) or blocked by Windows Firewall.")
+        
         return False
 
     @classmethod

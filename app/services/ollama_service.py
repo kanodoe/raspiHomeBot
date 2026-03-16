@@ -12,12 +12,37 @@ class OllamaService:
     _process: Optional[subprocess.Popen] = None
 
     @classmethod
+    async def is_port_listening_remotely(cls, host: str, port: int) -> bool:
+        """
+        Check via SSH if the port is listening on the remote host.
+        """
+        from app.utils.ssh import run_ssh_command
+        # Netstat command that returns exit code 0 if found, 1 otherwise
+        cmd = f'powershell -Command "netstat -ano | findstr LISTENING | findstr :{port}"'
+        return await run_ssh_command(cmd, host)
+
+    @classmethod
     async def is_available(cls) -> bool:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{cls._base_url}/api/tags", timeout=2.0)
                 return response.status_code == 200
         except Exception:
+            # Diagnostics for remote host if we are in Docker
+            from urllib.parse import urlparse
+            try:
+                parsed = urlparse(cls._base_url)
+                host = parsed.hostname
+                port = parsed.port or 11434
+                is_local = host in ("localhost", "127.0.0.1", "0.0.0.0", None)
+                
+                if os.name != 'nt' and not is_local:
+                    ssh_host = host if host else settings.PC_IP
+                    if await cls.is_port_listening_remotely(ssh_host, port):
+                        logger.warning(f"Ollama IS LISTENING on remote host {ssh_host}:{port} via SSH, but is NOT REACHABLE via HTTP from this container. "
+                                       "This usually means it's bound to 127.0.0.1. Set OLLAMA_HOST=0.0.0.0 on Windows.")
+            except:
+                pass
             return False
 
     @classmethod
@@ -39,9 +64,15 @@ class OllamaService:
             if os.name != 'nt':
                 from app.utils.ssh import run_ssh_command
                 ssh_host = host if not is_local else settings.PC_IP
+                
+                # Check if port is in use but not responding (binding issue)
+                if await cls.is_port_listening_remotely(ssh_host, 11434):
+                     logger.info(f"Ollama port 11434 is in use on {ssh_host} but not responding to HTTP. Stopping it for a clean start with 0.0.0.0 binding...")
+                     await cls.stop_ollama()
+
                 logger.info(f"Attempting to start Ollama on host {ssh_host} via SSH...")
-                # We use powershell Start-Process to launch it in background and return immediately
-                cmd = f'powershell -Command "Start-Process -FilePath \'ollama\' -ArgumentList \'serve\' -WindowStyle Hidden"'
+                # We use powershell to set OLLAMA_HOST before starting
+                cmd = f'powershell -Command "$env:OLLAMA_HOST = \'0.0.0.0\'; Start-Process -FilePath \'ollama\' -ArgumentList \'serve\' -WindowStyle Hidden"'
                 if await run_ssh_command(cmd, ssh_host):
                      # Wait for it to be ready
                      for _ in range(15):
@@ -87,8 +118,8 @@ class OllamaService:
             from app.utils.ssh import run_ssh_command
             ssh_host = host if not is_local else settings.PC_IP
             logger.info(f"Attempting to stop Ollama on host {ssh_host} via SSH...")
-            # Kill by image name
-            cmd = 'taskkill /F /IM ollama.exe /T'
+            # Kill by image name or port if possible
+            cmd = 'powershell -Command "Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force; Get-NetTCPConnection -LocalPort 11434 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }"'
             await run_ssh_command(cmd, ssh_host)
             await asyncio.sleep(2)
             return not await cls.is_available()

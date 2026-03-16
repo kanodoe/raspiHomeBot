@@ -150,12 +150,14 @@ OLLAMA_BASE_URL=http://192.168.1.46:11434
 OLLAMA_MODEL=llama3
 ```
 
-### Gestión de Servicios
-Si los servicios no están corriendo por defecto, el bot intentará levantarlos:
-- `/acestep_start`: Si el bot está en la misma máquina, usa `subprocess`. Si el host es remoto, usa **SSH** (requiere servidor SSH en el destino).
-- `/ollama_start`: Similar a ACE-Step, intentará ejecutar `ollama serve` local o remotamente.
+### Recomendación para Producción: ACE-Step en Docker (Host Windows)
 
-> **Importante**: Para el control remoto vía SSH, asegúrate de que `SSH_USER` y `SSH_KEY_PATH` en el `.env` correspondan al equipo donde están ACE-Step y Ollama.
+Si experimentas problemas de conectividad o firewall, la forma más robusta de correr ACE-Step en el PC remoto es usando Docker:
+1. Instala **Docker Desktop** en Windows con soporte WSL2 y CUDA.
+2. Crea un contenedor mapeando el puerto 8001: `-p 8001:8001`.
+3. Esto asegura que la API escuche en todas las interfaces (`0.0.0.0`) y facilita la comunicación con la Raspberry Pi.
+
+Si prefieres seguir usando el archivo `.bat` directamente, el bot intentará parchear automáticamente el binding a `0.0.0.0`, pero asegúrate de permitir el puerto 8001 en el **Firewall de Windows** para conexiones entrantes.
 
 ### Flujo de Generación de Canción
 1. Ejecuta `/generate_song`.
