@@ -94,12 +94,44 @@ async def register_commands(bot):
     await bot.set_my_commands(commands)
     logger.info("Telegram bot commands registered in API.")
 
+# Descripción y mensaje corto del bot por modo (lo que ve el usuario al abrir el chat o al compartir el bot)
+BOT_DESCRIPTIONS = {
+    "admin": (
+        "Bot de administración del hogar: encender/apagar PC, abrir portón, gestionar invitaciones y generar canciones con IA.",
+        "Administración: PC, portón, invitaciones y canciones.",
+    ),
+    "songs": (
+        "Genera canciones con IA. Necesitas un enlace de invitación del administrador para obtener cupo. Si el servicio no está disponible, contacta al admin.",
+        "Genera canciones con IA. Necesitas invitación del admin.",
+    ),
+    "gate": (
+        "Abrir el portón y registrar entrada/salida. Necesitas un enlace de invitación del administrador para usar el bot.",
+        "Abrir portón y registrar entrada/salida. Invitación del admin.",
+    ),
+}
+
+async def set_bot_descriptions(bot):
+    """Configura la descripción y short description del bot según BOT_MODE."""
+    mode = get_bot_mode()
+    desc, short = BOT_DESCRIPTIONS.get(mode, BOT_DESCRIPTIONS["admin"])
+    try:
+        await bot.set_my_description(desc)
+        await bot.set_my_short_description(short[:120] if short else "")
+        logger.info("Telegram bot description and short description set for mode=%s.", mode)
+    except Exception as e:
+        logger.warning("Could not set bot description/short_description: %s", e)
+
+async def _post_init(application):
+    """Se ejecuta tras initialize() para cada proceso (admin, songs, gate). Registra comandos y descripción."""
+    await register_commands(application.bot)
+    await set_bot_descriptions(application.bot)
+
 def setup_bot():
     from app.core.config import get_bot_token_for_mode
     enabled = get_enabled_modules()
     mode = get_bot_mode()
     token = get_bot_token_for_mode(mode)
-    application = ApplicationBuilder().token(token).build()
+    application = ApplicationBuilder().token(token).post_init(_post_init).build()
 
     application.add_handler(CommandHandler("start", start))
 
@@ -229,7 +261,6 @@ async def lifespan(app: FastAPI):
     application.bot_data["bus"] = bus
     try:
         await application.initialize()
-        await register_commands(application.bot)
         await application.start()
         await application.updater.start_polling()
     except InvalidToken:
