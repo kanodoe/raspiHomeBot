@@ -127,6 +127,7 @@ async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def acestep_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bus = context.bot_data.get("bus")
     if bus:
+        await update.message.reply_text("Intentando iniciar la API de ACE-Step...")
         await bus.publish("command", {"command": "acestep_start", "source": f"chat_{update.effective_chat.id}"})
     else:
         await update.message.reply_text("Event bus not available.")
@@ -135,6 +136,7 @@ async def acestep_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def acestep_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bus = context.bot_data.get("bus")
     if bus:
+        await update.message.reply_text("Intentando detener la API de ACE-Step...")
         await bus.publish("command", {"command": "acestep_stop", "source": f"chat_{update.effective_chat.id}"})
     else:
         await update.message.reply_text("Event bus not available.")
@@ -143,6 +145,7 @@ async def acestep_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ollama_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bus = context.bot_data.get("bus")
     if bus:
+        await update.message.reply_text("Intentando iniciar Ollama...")
         await bus.publish("command", {"command": "ollama_start", "source": f"chat_{update.effective_chat.id}"})
     else:
         await update.message.reply_text("Event bus not available.")
@@ -151,6 +154,7 @@ async def ollama_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ollama_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bus = context.bot_data.get("bus")
     if bus:
+        await update.message.reply_text("Intentando detener Ollama...")
         await bus.publish("command", {"command": "ollama_stop", "source": f"chat_{update.effective_chat.id}"})
     else:
         await update.message.reply_text("Event bus not available.")

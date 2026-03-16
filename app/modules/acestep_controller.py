@@ -29,9 +29,13 @@ class AceStepController(BaseModule):
         
         success = await AceStepService.start_api()
         if success:
-            await self.bus.publish("notify.status", {"message": "ACE-Step API iniciada correctamente.", "source": source})
+            # Check if it's really ready or just starting
+            if await AceStepService.is_api_ready():
+                await self.bus.publish("notify.status", {"message": "✅ ACE-Step API iniciada y lista.", "source": source})
+            else:
+                await self.bus.publish("notify.status", {"message": "⏳ ACE-Step API se está iniciando (puede tardar unos momentos en estar disponible).", "source": source})
         else:
-            await self.bus.publish("notify.error", {"message": "Error al iniciar la API de ACE-Step.", "source": source})
+            await self.bus.publish("notify.error", {"message": "❌ Error al iniciar la API de ACE-Step.", "source": source})
 
     async def _handle_stop(self, data: Dict[str, Any]):
         source = data.get("source")
@@ -39,9 +43,9 @@ class AceStepController(BaseModule):
         
         success = await AceStepService.stop_api()
         if success:
-            await self.bus.publish("notify.status", {"message": "ACE-Step API detenida.", "source": source})
+            await self.bus.publish("notify.status", {"message": "🛑 ACE-Step API detenida correctamente.", "source": source})
         else:
-            await self.bus.publish("notify.error", {"message": "Error al detener la API de ACE-Step.", "source": source})
+            await self.bus.publish("notify.error", {"message": "⚠️ Error al intentar detener la API de ACE-Step. Puede que ya estuviera cerrada.", "source": source})
 
     async def _handle_ollama_start(self, data: Dict[str, Any]):
         source = data.get("source")
@@ -49,9 +53,12 @@ class AceStepController(BaseModule):
         
         success = await OllamaService.start_ollama()
         if success:
-            await self.bus.publish("notify.status", {"message": "Ollama iniciado correctamente.", "source": source})
+            if await OllamaService.is_available():
+                await self.bus.publish("notify.status", {"message": "✅ Ollama iniciado y listo.", "source": source})
+            else:
+                await self.bus.publish("notify.status", {"message": "⏳ Ollama se está iniciando...", "source": source})
         else:
-            await self.bus.publish("notify.error", {"message": "Error al iniciar Ollama. Asegúrate de que esté en el PATH.", "source": source})
+            await self.bus.publish("notify.error", {"message": "❌ Error al iniciar Ollama. Asegúrate de que esté en el PATH o sea accesible.", "source": source})
 
     async def _handle_ollama_stop(self, data: Dict[str, Any]):
         source = data.get("source")
@@ -59,9 +66,9 @@ class AceStepController(BaseModule):
         
         success = await OllamaService.stop_ollama()
         if success:
-            await self.bus.publish("notify.status", {"message": "Ollama detenido (si fue iniciado por el bot).", "source": source})
+            await self.bus.publish("notify.status", {"message": "🛑 Ollama detenido correctamente.", "source": source})
         else:
-            await self.bus.publish("notify.error", {"message": "No se pudo detener Ollama. Puede que se iniciara externamente.", "source": source})
+            await self.bus.publish("notify.error", {"message": "⚠️ No se pudo detener Ollama. Puede que se iniciara externamente o no sea accesible vía SSH.", "source": source})
 
     async def _handle_generate(self, data: Dict[str, Any]):
         source = data.get("source")

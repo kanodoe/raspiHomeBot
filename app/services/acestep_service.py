@@ -13,7 +13,7 @@ class AceStepService:
 
     @classmethod
     async def start_api(cls) -> bool:
-        if cls._process and cls._process.poll() is None:
+        if await cls.is_api_ready():
             logger.info("ACE-Step API is already running.")
             return True
 
@@ -45,14 +45,17 @@ class AceStepService:
             
             from app.utils.ssh import run_ssh_command
             logger.info(f"Attempting to start ACE-Step remotely on {ssh_host} via SSH (Windows path on {os.name})...")
-            # Start in background if possible, but cmd /c might be enough if it returns
-            cmd = f'cmd /c "cd /d {ace_path_str} && set CHECK_UPDATE=false && {bat_name}"'
+            # We use powershell Start-Process to launch it in background and return immediately
+            cmd = f'powershell -Command "Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false && {bat_name}\' -WorkingDirectory \'{ace_path_str}\' -WindowStyle Hidden"'
             if await run_ssh_command(cmd, ssh_host):
                 # Wait for it to be ready
                 for _ in range(15):
                     await asyncio.sleep(2)
-                    if await cls.is_api_ready(): return True
-                return True
+                    if await cls.is_api_ready(): 
+                        logger.info("ACE-Step API is ready (via SSH).")
+                        return True
+                logger.warning("ACE-Step API started via SSH but is not responding yet.")
+                return True # We still return True because it's starting, but the controller could be smarter
             return False
 
         if not Path(bat_path_str).exists() and os.name == 'nt':
@@ -90,10 +93,34 @@ class AceStepService:
 
     @classmethod
     async def stop_api(cls) -> bool:
+        # Check if we should use SSH to stop
+        is_windows_path = ":" in settings.ACESTEP_PATH or settings.ACESTEP_PATH.startswith("\\")
+        use_ssh = os.name != 'nt' and is_windows_path
+        
+        if use_ssh:
+            from app.utils.ssh import run_ssh_command
+            ssh_host = settings.ACESTEP_HOST
+            if ssh_host in ("localhost", "127.0.0.1", "0.0.0.0"):
+                ssh_host = settings.PC_IP
+            
+            logger.info(f"Attempting to stop ACE-Step remotely on {ssh_host} via SSH...")
+            # Kill by port 8001
+            cmd = f'powershell -Command "Get-NetTCPConnection -LocalPort {settings.ACESTEP_PORT} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object {{ TaskKill /F /PID $_ /T }}"'
+            await run_ssh_command(cmd, ssh_host)
+            # Wait a bit
+            await asyncio.sleep(2)
+            return not await cls.is_api_ready()
+
         if not cls._process or cls._process.poll() is not None:
-            # Try to kill any leftover processes if possible, but mainly we want to stop what we started
-            # ACE-Step might have multiple processes (uv run -> python)
-            # A better way might be to find the process using the port
+            # If not started by us, try to kill by port locally if on Windows
+            if os.name == 'nt':
+                try:
+                    cmd = f'powershell -Command "Get-NetTCPConnection -LocalPort {settings.ACESTEP_PORT} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object {{ TaskKill /F /PID $_ /T }}"'
+                    subprocess.run(cmd, shell=True, capture_output=True)
+                    await asyncio.sleep(2)
+                    return not await cls.is_api_ready()
+                except:
+                    pass
             logger.info("ACE-Step API is not running.")
             return True
 

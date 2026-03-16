@@ -40,11 +40,16 @@ class OllamaService:
                 from app.utils.ssh import run_ssh_command
                 ssh_host = host if not is_local else settings.PC_IP
                 logger.info(f"Attempting to start Ollama on host {ssh_host} via SSH...")
-                if await run_ssh_command("ollama serve", ssh_host):
+                # We use powershell Start-Process to launch it in background and return immediately
+                cmd = f'powershell -Command "Start-Process -FilePath \'ollama\' -ArgumentList \'serve\' -WindowStyle Hidden"'
+                if await run_ssh_command(cmd, ssh_host):
                      # Wait for it to be ready
                      for _ in range(15):
                          await asyncio.sleep(2)
-                         if await cls.is_available(): return True
+                         if await cls.is_available(): 
+                             logger.info("Ollama is ready (via SSH).")
+                             return True
+                     logger.warning("Ollama started via SSH but is not responding yet.")
                      return True
                 return False
 
@@ -73,9 +78,20 @@ class OllamaService:
 
     @classmethod
     async def stop_ollama(cls) -> bool:
-        if not await cls.is_available():
-            logger.info("Ollama is not running.")
-            return True
+        from urllib.parse import urlparse
+        parsed = urlparse(cls._base_url)
+        host = parsed.hostname
+        is_local = host in ("localhost", "127.0.0.1", "0.0.0.0", None)
+        
+        if os.name != 'nt':
+            from app.utils.ssh import run_ssh_command
+            ssh_host = host if not is_local else settings.PC_IP
+            logger.info(f"Attempting to stop Ollama on host {ssh_host} via SSH...")
+            # Kill by image name
+            cmd = 'taskkill /F /IM ollama.exe /T'
+            await run_ssh_command(cmd, ssh_host)
+            await asyncio.sleep(2)
+            return not await cls.is_available()
 
         if cls._process:
             try:
@@ -90,8 +106,12 @@ class OllamaService:
                 logger.error(f"Error stopping Ollama process: {e}")
                 return False
         else:
-            # If we didn't start it, maybe we should try to taskkill by name?
-            # But that might be too aggressive if it's the user's tray app.
+            # Try to kill by name if on Windows locally
+            if os.name == 'nt':
+                subprocess.run(["taskkill", "/F", "/IM", "ollama.exe", "/T"], capture_output=True)
+                await asyncio.sleep(2)
+                return not await cls.is_available()
+            
             logger.warning("Ollama is running but was not started by this bot. Cannot stop it safely.")
             return False
 
