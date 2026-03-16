@@ -6,7 +6,7 @@ import json
 import base64
 import urllib.parse
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -26,10 +26,15 @@ class AceStepService:
         return f"http://{host}:{settings.ACESTEP_PORT}"
 
     @classmethod
-    async def start_api(cls) -> bool:
+    async def start_api(cls) -> Tuple[bool, Optional[str]]:
+        """
+        Start the ACE-Step API. Returns (success, error_message).
+        If the port is already in use on the remote host, we do NOT kill the process;
+        we return False with a message asking the user to set HOST=0.0.0.0 in start_api_server.bat.
+        """
         if await cls.is_api_ready():
             logger.info("ACE-Step API is already running.")
-            return True
+            return True, None
 
         # Prepare the path for the bat file
         bat_name = "start_api_server.bat"
@@ -57,18 +62,22 @@ class AceStepService:
             if ssh_host in ("localhost", "127.0.0.1", "0.0.0.0"):
                 ssh_host = settings.PC_IP # Fallback to PC_IP if host is set to local on Docker
             
-            # Check if port is already in use (possibly by a 127.0.0.1 bound instance)
+            # If port is already in use, do NOT kill the process. The API may be running with 127.0.0.1.
             if await cls.is_port_listening_remotely(ssh_host, settings.ACESTEP_PORT):
-                logger.info(f"Port {settings.ACESTEP_PORT} is already in use on {ssh_host} but API is not reachable via HTTP. "
-                            "Attempting to stop existing process to ensure clean start with 0.0.0.0 binding...")
-                await cls.stop_api()
+                msg = (
+                    f"La API de ACE-Step parece estar en ejecución en el equipo remoto ({ssh_host}:{settings.ACESTEP_PORT}) "
+                    "pero no es accesible desde aquí. Configura start_api_server.bat con HOST=0.0.0.0 y permite "
+                    f"el puerto {settings.ACESTEP_PORT} en el firewall de Windows."
+                )
+                logger.warning(msg)
+                return False, msg
 
             from app.utils.ssh import run_ssh_command
             logger.info(f"Attempting to start ACE-Step remotely on {ssh_host} via SSH (Windows path on {os.name})...")
             
             # We use powershell to create a temporary .bat that forces HOST=0.0.0.0 
             # if the original has it hardcoded to 127.0.0.1
-            docker_bat = "start_api_server_docker.bat"
+            docker_bat = "start_api_server_docker_remote.bat"
             cmd = (
                 f'powershell -Command "cd \'{ace_path_str}\'; '
                 f'(Get-Content .\\{bat_name}) -replace \'set HOST=127.0.0.1\', \'set HOST=0.0.0.0\' | Set-Content .\\{docker_bat}; '
@@ -82,7 +91,7 @@ class AceStepService:
                     await asyncio.sleep(2)
                     if await cls.is_api_ready(): 
                         logger.info(f"ACE-Step API is ready (via SSH) after {i*2}s.")
-                        return True
+                        return True, None
                 
                 # Check if it is at least listening (diagnostics)
                 if await cls.is_port_listening_remotely(ssh_host, settings.ACESTEP_PORT):
@@ -90,12 +99,12 @@ class AceStepService:
                                    "Check Windows Firewall rules for port {settings.ACESTEP_PORT}.")
                 
                 logger.warning("ACE-Step API started via SSH but is not responding yet (timed out after 60s).")
-                return False
-            return False
+                return False, "La API de ACE-Step se inició pero no respondió a tiempo. Revisa el firewall y que HOST=0.0.0.0 en start_api_server.bat."
+            return False, "No se pudo ejecutar el comando SSH para iniciar ACE-Step. Revisa la conexión y las credenciales."
 
         if not Path(bat_path_str).exists() and os.name == 'nt':
             logger.error(f"ACE-Step bat file not found at: {bat_path_str}")
-            return False
+            return False, f"Archivo bat no encontrado: {bat_path_str}"
 
         try:
             env = os.environ.copy()
@@ -115,16 +124,16 @@ class AceStepService:
             for _ in range(30): # Wait up to 30 seconds
                 await asyncio.sleep(2)
                 if await cls.is_api_ready():
-                    return True
+                    return True, None
                 if cls._process.poll() is not None:
                     logger.error("ACE-Step API process terminated unexpectedly.")
-                    return False
+                    return False, "El proceso de la API de ACE-Step terminó inesperadamente."
             
             logger.warning("ACE-Step API started but health check failed after 60s.")
-            return False
+            return False, "La API de ACE-Step se inició pero no respondió a tiempo."
         except Exception as e:
             logger.error(f"Error starting ACE-Step API: {e}")
-            return False
+            return False, f"Error al iniciar la API de ACE-Step: {e}"
 
     @classmethod
     async def stop_api(cls) -> bool:

@@ -180,9 +180,20 @@ async def generate_song_mode(update: Update, context: ContextTypes.DEFAULT_TYPE)
     mode = update.message.text.lower()
     if "ia" in mode:
         if not await OllamaService.is_available():
-            await update.message.reply_text("Lo siento, el servicio de IA (Ollama) no está disponible en este momento. Usaremos el modo manual.")
-            return await generate_song_ask_style(update, context)
-        
+            await update.message.reply_text(
+                "Ollama no está activo. Intentando iniciarlo… (puede tardar unos segundos)."
+            )
+            success, error_msg = await OllamaService.start_ollama()
+            if success and await OllamaService.is_available():
+                await update.message.reply_text("✅ Ollama listo. Continuamos con asistencia por IA.")
+            else:
+                await update.message.reply_text(
+                    "No se pudo iniciar Ollama. Continuamos en modo manual. "
+                    "Puedes usar /ollama_start más tarde e intentar de nuevo."
+                    + (f"\n\n{error_msg}" if error_msg else "")
+                )
+                return await generate_song_ask_style(update, context)
+
         await update.message.reply_text(
             "Describe el tema de la canción, sentimientos o cualquier indicación para que la IA genere opciones:",
             reply_markup=ReplyKeyboardRemove()

@@ -29,7 +29,7 @@ class AceStepController(BaseModule):
         source = data.get("source")
         logger.info(f"AceStepController: Starting ACE-Step API (source: {source})")
         
-        success = await AceStepService.start_api()
+        success, error_msg = await AceStepService.start_api()
         if success:
             # Check if it's really ready or just starting
             if await AceStepService.is_api_ready():
@@ -37,7 +37,8 @@ class AceStepController(BaseModule):
             else:
                 await self.bus.publish("notify.status", {"message": "⏳ ACE-Step API se está iniciando (puede tardar unos momentos en estar disponible).", "source": source})
         else:
-            await self.bus.publish("notify.error", {"message": "❌ Error al iniciar la API de ACE-Step.", "source": source})
+            msg = error_msg or "Error al iniciar la API de ACE-Step."
+            await self.bus.publish("notify.error", {"message": f"❌ {msg}", "source": source})
 
     async def _handle_stop(self, data: Dict[str, Any]):
         source = data.get("source")
@@ -53,14 +54,15 @@ class AceStepController(BaseModule):
         source = data.get("source")
         logger.info(f"AceStepController: Starting Ollama (source: {source})")
         
-        success = await OllamaService.start_ollama()
+        success, error_msg = await OllamaService.start_ollama()
         if success:
             if await OllamaService.is_available():
                 await self.bus.publish("notify.status", {"message": "✅ Ollama iniciado y listo.", "source": source})
             else:
                 await self.bus.publish("notify.status", {"message": "⏳ Ollama se está iniciando...", "source": source})
         else:
-            await self.bus.publish("notify.error", {"message": "❌ Error al iniciar Ollama. Asegúrate de que esté en el PATH o sea accesible.", "source": source})
+            msg = error_msg or "Error al iniciar Ollama. Asegúrate de que esté en el PATH o sea accesible."
+            await self.bus.publish("notify.error", {"message": f"❌ {msg}", "source": source})
 
     async def _handle_ollama_stop(self, data: Dict[str, Any]):
         source = data.get("source")
@@ -82,10 +84,12 @@ class AceStepController(BaseModule):
         # Check if API is ready, if not, try to start it
         if not await AceStepService.is_api_ready():
             await self.bus.publish("notify.status", {"message": "⏳ La API de ACE-Step no está lista. Intentando iniciarla...", "source": source})
-            if await AceStepService.start_api():
+            success, error_msg = await AceStepService.start_api()
+            if success:
                 await self.bus.publish("notify.status", {"message": "✅ API de ACE-Step iniciada. Enviando tarea...", "source": source})
             else:
-                await self.bus.publish("notify.error", {"message": "❌ No se pudo iniciar la API de ACE-Step. Abortando generación.", "source": source})
+                msg = error_msg or "No se pudo iniciar la API de ACE-Step. Abortando generación."
+                await self.bus.publish("notify.error", {"message": f"❌ {msg}", "source": source})
                 return
 
         task_id = await AceStepService.generate_song(prompt, lyrics)

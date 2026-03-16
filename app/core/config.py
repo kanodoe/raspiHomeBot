@@ -40,7 +40,7 @@ class AppSettings(BaseSettings):
     CHECK_INTERVAL: int = 5
     PING_TIMEOUT: int = 2
     WOL_BROADCAST: str = "255.255.255.255"
-    SSH_PORT: int = 2
+    SSH_PORT: int = 22
     GATE_OPEN_DURATION: int = 5
 
 def load_config_yaml(settings: AppSettings, config_path: str = "config.yaml"):

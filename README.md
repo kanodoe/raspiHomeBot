@@ -65,6 +65,7 @@ app/
 │   ├── state_store.py
 │   ├── pc_controller.py
 │   └── gate_controller.py
+├── prompts/      # LLM prompts for style/lyrics (ACE-Step compatible)
 ├── services/     # Core logic (WOL, Gate, Permissions)
 ├── scheduler/    # Legacy background tasks (APScheduler)
 └── utils/        # Network and SSH utilities
@@ -124,6 +125,8 @@ El bot permite generar música utilizando **ACE-Step 1.5** y asistir en la creac
 - **ACE-Step 1.5** instalado en el host. La ruta se configura en el archivo `.env`.
 - **Ollama** instalado en el host y disponible en el PATH del sistema.
 
+Los prompts para estilo y letra (compatibles con ACE-Step) están en `app/prompts/`. Cualquier integración con otro LLM debe usar esos mismos prompts para mantener el formato esperado por ACE-Step.
+
 ### Configuración (.env)
 Asegúrate de configurar correctamente las rutas y puertos en tu archivo `.env`. 
 
@@ -157,15 +160,32 @@ Si experimentas problemas de conectividad o firewall, la forma más robusta de c
 2. Crea un contenedor mapeando el puerto 8001: `-p 8001:8001`.
 3. Esto asegura que la API escuche en todas las interfaces (`0.0.0.0`) y facilita la comunicación con la Raspberry Pi.
 
-Si prefieres seguir usando el archivo `.bat` directamente, el bot intentará parchear automáticamente el binding a `0.0.0.0`, pero asegúrate de permitir el puerto 8001 en el **Firewall de Windows** para conexiones entrantes.
+Si prefieres seguir usando el archivo `.bat` directamente, en el equipo remoto (Windows) edita `start_api_server.bat` del [repositorio oficial de ACE-Step 1.5](https://github.com/ace-step/ACE-Step-1.5): cambia `set HOST=127.0.0.1` por `set HOST=0.0.0.0` para que la API sea accesible desde el contenedor. Permite el puerto 8001 en el **Firewall de Windows** para conexiones entrantes.
 
 ### Flujo de Generación de Canción
 1. Ejecuta `/generate_song`.
-2. Selecciona **Asistido por IA**. Si Ollama no está activo, el bot te avisará y podrás usar el modo manual o intentar levantarlo con `/ollama_start`.
+2. Selecciona **Asistido por IA**. Si Ollama no está activo, el bot intentará iniciarlo automáticamente; si no lo consigue, continuarás en modo manual o puedes usar `/ollama_start` y volver a intentar.
 3. Describe el tema (ej: "Una canción de rock sobre un robot que quiere ser humano").
-4. Ollama generará una propuesta de **Estilo** y **Letra**.
+4. Ollama generará una propuesta de **Estilo** y **Letra** (formato compatible con ACE-Step).
 5. Puedes **Aceptar**, **Refinar** (pedir cambios específicos) o **Regenerar**.
 6. Una vez aceptado, se envía a ACE-Step. El bot te notificará cuando el audio esté listo y te lo enviará directamente.
+
+## Troubleshooting (Bot en contenedor + Windows remoto)
+
+### La API de ACE-Step o Ollama “no se ve” desde el bot
+- **Causa habitual:** El servicio está escuchando en `127.0.0.1` (solo localhost). Desde el contenedor no se puede conectar.
+- **Solución:** En el PC Windows donde corre ACE-Step, edita `start_api_server.bat` y pon `set HOST=0.0.0.0`. Para Ollama, inicia el servicio con `OLLAMA_HOST=0.0.0.0` (o configúralo en el sistema). Abre el puerto correspondiente (8001 para ACE-Step, 11434 para Ollama) en el Firewall de Windows.
+- **Importante:** Si la API ya está en ejecución y el bot no la ve, el bot **no** intentará matar el proceso; te indicará que configures `HOST=0.0.0.0` y el firewall.
+
+### El bot intenta iniciar la API y no la ve / “ya estaba corriendo”
+- Si ACE-Step u Ollama están corriendo en el host con `127.0.0.1`, el bot no puede conectarse por HTTP. Al intentar “iniciar”, el bot comprueba si el puerto está en uso; si lo está, **no** cierra el proceso y te pide que configures `HOST=0.0.0.0` y el firewall. Revisa la configuración en el equipo remoto y vuelve a probar.
+
+### Errores SSH (comandos que no se ejecutan)
+- **Requisitos:** OpenSSH habilitado en Windows, clave SSH (`SSH_KEY_PATH`), usuario (`SSH_USER`), puerto por defecto 22 (configurable con `SSH_PORT` en `.env` o `config.yaml`).
+- Verifica que desde el contenedor puedas conectar por SSH al host (`ssh -i <clave> usuario@PC_IP`). Revisa los logs del bot: incluyen `exit_status`, `stderr` y el host:puerto para facilitar el diagnóstico.
+
+### Variables de red
+- Usa `PC_IP` (IP LAN del PC), `ACESTEP_HOST` y `OLLAMA_BASE_URL` apuntando a esa IP (ej: `http://192.168.1.46:11434`), no a `127.0.0.1`, cuando el bot corre en Docker y los servicios en el host.
 
 ## CLI Simulator
 

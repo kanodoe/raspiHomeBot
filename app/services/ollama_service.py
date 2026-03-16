@@ -2,7 +2,7 @@ import subprocess
 import os
 import asyncio
 import httpx
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -46,46 +46,52 @@ class OllamaService:
             return False
 
     @classmethod
-    async def start_ollama(cls) -> bool:
+    async def start_ollama(cls) -> Tuple[bool, Optional[str]]:
+        """
+        Start Ollama. Returns (success, error_message).
+        If the port is already in use on the remote host, we do NOT kill the process;
+        we return False with a message asking the user to set OLLAMA_HOST=0.0.0.0.
+        """
         if await cls.is_available():
             logger.info("Ollama is already running.")
-            return True
+            return True, None
 
         from urllib.parse import urlparse
         parsed = urlparse(cls._base_url)
         host = parsed.hostname
         # If we are in Linux (Docker) and the target is a localhost, it's likely the Windows host.
-        # However, it's safer to always check if we should use SSH to reach the Windows environment.
         is_local = host in ("localhost", "127.0.0.1", "0.0.0.0", None)
         
         try:
-            # If on POSIX, we almost always want to start Ollama on the host via SSH 
-            # unless the user really installed Ollama inside the Docker container.
+            # If on POSIX, we almost always want to start Ollama on the host via SSH
             if os.name != 'nt':
                 from app.utils.ssh import run_ssh_command
                 ssh_host = host if not is_local else settings.PC_IP
                 
-                # Check if port is in use but not responding (binding issue)
+                # If port is already in use, do NOT kill the process. Ollama may be running with 127.0.0.1.
                 if await cls.is_port_listening_remotely(ssh_host, 11434):
-                     logger.info(f"Ollama port 11434 is in use on {ssh_host} but not responding to HTTP. Stopping it for a clean start with 0.0.0.0 binding...")
-                     await cls.stop_ollama()
+                    msg = (
+                        f"Ollama parece estar en ejecución en el equipo remoto ({ssh_host}:11434) pero no es accesible desde aquí. "
+                        "Configura OLLAMA_HOST=0.0.0.0 antes de iniciar Ollama y permite el puerto 11434 en el firewall de Windows."
+                    )
+                    logger.warning(msg)
+                    return False, msg
 
                 logger.info(f"Attempting to start Ollama on host {ssh_host} via SSH...")
-                # We use powershell to set OLLAMA_HOST before starting
-                cmd = f'powershell -Command "$env:OLLAMA_HOST = \'0.0.0.0\'; Start-Process -FilePath \'ollama\' -ArgumentList \'serve\' -WindowStyle Hidden"'
+                # Set OLLAMA_HOST in the same session so the child process inherits it
+                cmd = 'powershell -Command "$env:OLLAMA_HOST = \'0.0.0.0\'; Start-Process -FilePath \'ollama\' -ArgumentList \'serve\' -WindowStyle Hidden"'
                 if await run_ssh_command(cmd, ssh_host):
-                     # Wait for it to be ready
-                     for _ in range(15):
-                         await asyncio.sleep(2)
-                         if await cls.is_available(): 
-                             logger.info("Ollama is ready (via SSH).")
-                             return True
-                     logger.warning("Ollama started via SSH but is not responding yet.")
-                     return True
-                return False
+                    # Wait for it to be ready (up to 30s)
+                    for _ in range(15):
+                        await asyncio.sleep(2)
+                        if await cls.is_available():
+                            logger.info("Ollama is ready (via SSH).")
+                            return True, None
+                    logger.warning("Ollama started via SSH but is not responding yet.")
+                    return False, "Ollama se inició por SSH pero no respondió a tiempo. Comprueba que OLLAMA_HOST=0.0.0.0 y el firewall."
+                return False, "No se pudo ejecutar el comando SSH para iniciar Ollama. Revisa la conexión y las credenciales."
 
             # On Windows, we try to run 'ollama serve'
-            # If it's in PATH, this should work.
             cls._process = subprocess.Popen(
                 ["ollama", "serve"],
                 shell=True if os.name == 'nt' else False,
@@ -93,19 +99,17 @@ class OllamaService:
             )
             logger.info(f"Ollama started locally with PID: {cls._process.pid}")
 
-            # Wait for it to be ready
-            for _ in range(15): # Wait up to 30 seconds
+            for _ in range(15):
                 await asyncio.sleep(2)
                 if await cls.is_available():
-                    return True
+                    return True, None
                 if cls._process.poll() is not None:
                     logger.error("Ollama process terminated unexpectedly.")
-                    return False
-            
-            return False
+                    return False, "El proceso de Ollama terminó inesperadamente."
+            return False, "Ollama se inició pero no respondió a tiempo."
         except Exception as e:
             logger.error(f"Error starting Ollama: {e}")
-            return False
+            return False, f"Error al iniciar Ollama: {e}"
 
     @classmethod
     async def stop_ollama(cls) -> bool:
@@ -170,45 +174,23 @@ class OllamaService:
         return None
 
     @classmethod
-    async def suggest_song_details(cls, user_prompt: str) -> Optional[Dict[str, str]]:
+    async def suggest_song_details(cls, user_prompt: str, refinamiento: Optional[str] = None) -> Optional[Dict[str, str]]:
         """
-        Suggests style and lyrics based on a user prompt.
+        Suggests style and lyrics based on a user prompt (ACE-Step compatible format).
         Returns a dict with 'style' and 'lyrics'.
         """
-        system_prompt = (
-            "Eres un experto compositor de canciones y productor musical. "
-            "Tu tarea es ayudar al usuario a crear una canción. "
-            "Debes responder en formato JSON con dos campos: 'style' (una descripción concisa del estilo musical, instrumentos, tempo, etc.) "
-            "y 'lyrics' (la letra de la canción). "
-            "Asegúrate de que la letra sea creativa y coherente con el estilo. "
-            "Responde ÚNICAMENTE el JSON, sin texto adicional."
+        from app.prompts import (
+            SYSTEM_PROMPT_STYLE_LYRICS,
+            build_user_prompt,
+            parse_style_lyrics_response,
         )
-        
-        prompt = f"Crea una canción basada en el siguiente tema o indicaciones: {user_prompt}"
-        
-        response_text = await cls.generate_text(prompt, system_prompt)
+
+        prompt = build_user_prompt(user_prompt, refinamiento)
+        response_text = await cls.generate_text(prompt, SYSTEM_PROMPT_STYLE_LYRICS)
         if not response_text:
             return None
 
-        # Clean response text in case Ollama adds markdown or extra text
-        import json
-        import re
-        
-        try:
-            # Try to find JSON block if Ollama ignored "only JSON" instruction
-            match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if match:
-                json_str = match.group(0)
-                data = json.loads(json_str)
-                return {
-                    "style": data.get("style", "Pop rock"),
-                    "lyrics": data.get("lyrics", "")
-                }
-        except Exception as e:
-            logger.error(f"Error parsing Ollama JSON response: {e}. Raw: {response_text}")
-            
-        # Fallback if JSON parsing fails: return the raw text as style and empty lyrics (user will have to fix it)
-        return {
-            "style": "Error parseando respuesta de IA",
-            "lyrics": response_text
-        }
+        result = parse_style_lyrics_response(response_text)
+        if "Error parseando" in result.get("style", ""):
+            logger.error(f"Error parsing LLM response. Raw: {response_text[:500]}")
+        return result

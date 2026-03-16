@@ -16,17 +16,25 @@ async def run_ssh_command(command: str, host: str = None) -> bool:
         import asyncssh
         async with asyncssh.connect(
             host,
+            port=settings.SSH_PORT,
             username=settings.SSH_USER,
             client_keys=[settings.SSH_KEY_PATH],
             known_hosts=None
         ) as conn:
             result = await conn.run(command, check=False)
             if result.exit_status == 0:
-                logger.info(f"SSH command executed successfully on {host}: {command}")
+                logger.info(f"SSH command executed successfully on {host}:{settings.SSH_PORT}")
                 return True
             else:
-                logger.error(f"SSH command failed on {host} ({result.exit_status}): {result.stderr}")
+                stderr = (result.stderr or "").strip()
+                stdout = (result.stdout or "").strip()
+                err_detail = f"stderr={stderr[:500]}" if stderr else "stderr=(none)"
+                if stdout:
+                    err_detail += f" stdout={stdout[:200]}"
+                logger.error(
+                    f"SSH command failed on {host}:{settings.SSH_PORT} exit_status={result.exit_status} {err_detail}"
+                )
                 return False
     except Exception as e:
-        logger.error(f"SSH error on {host} executing '{command}': {e}")
+        logger.error(f"SSH error on {host}:{settings.SSH_PORT} executing command: {type(e).__name__}: {e}")
         return False
