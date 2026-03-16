@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "RaspiHomeBot API",
-    "description": "Endpoints de consulta de la base de datos (users, invitations, quotas, operations, access-requests).",
+    "description": "Endpoints de consulta y gestión: users, invitations (listar, mensaje de salida, borrar, register-guest), quotas, operations, access-requests.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -45,6 +45,36 @@
               { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true }
             ],
             "url": "{{base_url}}/api/invitations?limit=20&offset=0"
+          }
+        },
+        {
+          "name": "Get leave message for invitation",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true }
+            ],
+            "url": "{{base_url}}/api/invitations/1/leave-message"
+          }
+        },
+        {
+          "name": "Delete invitation by id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true }
+            ],
+            "url": "{{base_url}}/api/invitations/1"
+          }
+        },
+        {
+          "name": "Register guest from invitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true }
+            ],
+            "url": "{{base_url}}/api/invitations/1/register-guest"
           }
         }
       ]

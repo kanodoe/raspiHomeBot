@@ -581,8 +581,7 @@ async def invite_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(
             chat_id=admin_chat_id,
-            text=f"🔗 Enlace por *cantidad de canciones* ({count}):\n\n{link}\n\nQuien lo abra tendrá {count} canción(es) para generar (acceso prolongado).",
-            parse_mode="Markdown",
+            text=f"🔗 Enlace por cantidad de canciones ({count}):\n\n{link}\n\nQuien lo abra tendrá {count} canción(es) para generar (acceso prolongado).",
         )
         if update.effective_chat.id != admin_chat_id:
             await _reply_to_update(update, context, "Te he enviado el enlace por mensaje privado.")
@@ -637,8 +636,7 @@ async def invite_link_hours(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(
             chat_id=admin_chat_id,
-            text=f"🔗 Enlace por *cantidad + horas* ({count} canciones, {hours} h de acceso):\n\n{link}\n\nQuien lo abra tendrá {count} canción(es) y el acceso durará {hours} hora(s).",
-            parse_mode="Markdown",
+            text=f"🔗 Enlace por cantidad + horas ({count} canciones, {hours} h de acceso):\n\n{link}\n\nQuien lo abra tendrá {count} canción(es) y el acceso durará {hours} hora(s).",
         )
         if update.effective_chat.id != admin_chat_id:
             await _reply_to_update(update, context, "Te he enviado el enlace por mensaje privado.")
