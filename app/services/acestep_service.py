@@ -68,7 +68,7 @@ class AceStepService:
                         logger.info(f"ACE-Step API is ready (via SSH) after {i*2}s.")
                         return True
                 logger.warning("ACE-Step API started via SSH but is not responding yet (timed out after 60s).")
-                return True # Still return True because it's probably just slow
+                return False
             return False
 
         if not Path(bat_path_str).exists() and os.name == 'nt':
@@ -99,7 +99,7 @@ class AceStepService:
                     return False
             
             logger.warning("ACE-Step API started but health check failed after 60s.")
-            return True # Assume it might still be loading
+            return False
         except Exception as e:
             logger.error(f"Error starting ACE-Step API: {e}")
             return False
@@ -150,18 +150,23 @@ class AceStepService:
 
     @classmethod
     async def is_api_ready(cls) -> bool:
-        url = f"{cls.get_base_url()}/docs"
-        try:
-            async with httpx.AsyncClient() as client:
-                # Probing the API. If we get any response, it's listening.
-                response = await client.get(url, timeout=5.0)
+        base_url = cls.get_base_url()
+        # Try a few endpoints that might be available
+        for endpoint in ["/docs", "/"]:
+            url = f"{base_url}{endpoint}"
+            try:
+                async with httpx.AsyncClient() as client:
+                    # Probing the API. If we get any response, it's listening.
+                    response = await client.get(url, timeout=3.0)
+                    return True
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
+                logger.debug(f"ACE-Step API not ready at {url}: {type(e).__name__}")
+            except Exception as e:
+                # Other errors like 405 Method Not Allowed or 404 Not Found 
+                # still mean the server is there.
+                logger.debug(f"ACE-Step API responded with error at {url} (but it is listening): {e}")
                 return True
-        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout):
-            return False
-        except Exception:
-            # Other errors like 405 Method Not Allowed or 404 Not Found 
-            # still mean the server is there.
-            return True
+        return False
 
     @classmethod
     async def generate_song(cls, prompt: str, lyrics: str = "") -> Optional[str]:
