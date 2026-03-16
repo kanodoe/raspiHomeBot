@@ -1,4 +1,4 @@
 /.env
 .idea
 
-logs/home_bot.log
+/logs/home_bot.log
