@@ -5,6 +5,7 @@ sqlalchemy
 aiosqlite
 pydantic
 pydantic-settings
+cryptography
 wakeonlan
 python-dotenv
 httpx

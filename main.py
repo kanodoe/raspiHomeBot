@@ -15,7 +15,7 @@ from app.database.session import init_db, AsyncSessionLocal
 from app.services.permission_service import PermissionService
 from app.bot.handlers import (
     pc_on, pc_off, pc_status, status_summary, gate_open, invite, start,
-    invite_link, invite_songs, solicitar_canciones, grant_songs, estado_invitaciones,
+    invite_link, invite_link_gate, invite_gate, invite_songs, solicitar_canciones, grant_songs, estado_invitaciones,
     save_admin_song_callback,
     acestep_start, acestep_stop, acestep_save, ollama_start, ollama_stop,
     generate_song_start, generate_song_mode, generate_song_style,
@@ -57,6 +57,8 @@ async def register_commands(bot):
     if "gate" in enabled:
         commands.append(BotCommand("gate_open", "Abrir el portón (Invitados)"))
         commands.append(BotCommand("invite", "Invitar usuario (Admin)"))
+        commands.append(BotCommand("invite_link_gate", "Enlace invitación portón (Admin)"))
+        commands.append(BotCommand("invite_gate", "Invitación portón por user_id (Admin)"))
     
     commands.append(BotCommand("status", "Resumen del sistema"))
     
@@ -99,6 +101,8 @@ def setup_bot():
     if "gate" in enabled:
         application.add_handler(CommandHandler("gate_open", gate_open))
         application.add_handler(CommandHandler("invite", invite))
+        application.add_handler(CommandHandler("invite_link_gate", invite_link_gate))
+        application.add_handler(CommandHandler("invite_gate", invite_gate))
 
     if "acestep" in enabled:
         application.add_handler(CommandHandler("acestep_start", acestep_start))

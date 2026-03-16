@@ -41,7 +41,7 @@ ENABLED_MODULES=pc,gate,acestep,ollama,zigbee,arlo,scheduler
 
 Módulos disponibles:
 - `pc`: Comandos `/pc_on`, `/pc_off`, `/pc_status`.
-- `gate`: Comandos `/gate_open`, `/invite`.
+- `gate`: Comandos `/gate_open`, `/invite`, `/invite_link_gate`, `/invite_gate`.
 - `acestep`: Comandos `/acestep_start`, `/acestep_stop`, `/generate_song`.
 - `ollama`: Comandos `/ollama_start`, `/ollama_stop` (asistencia en `/generate_song`).
 - `zigbee`: Adaptador para dispositivos Zigbee.
@@ -109,9 +109,11 @@ graph TD
 - `/pc_off`: Shutdown PC via SSH.
 - `/pc_status`: Check if PC is online.
 - `/status`: Get a summary of the system state.
-- `/gate_open`: Open the gate (available for guests).
-- `/invite <user_id> <hours>h`: (Admin only) Grant temporary access to another user.
-- `/invite_link <cantidad>`: (Admin only) Genera un enlace de invitación; el bot te lo envía por mensaje privado. Quien abra el enlace recibe ese cupo de canciones (no necesitas saber su ID).
+- `/gate_open`: Abrir el portón (usuarios completos o invitados con acceso al portón por días).
+- `/invite <user_id> <hours>h`: (Admin) Acceso temporal a otro usuario.
+- `/invite_link <cantidad>`: (Admin) Enlace de invitación por canciones; te lo envía por privado.
+- `/invite_link_gate <días>`: (Admin) Enlace de invitación al portón (acceso por N días); te lo envía por privado.
+- `/invite_gate <user_id> <días>`: (Admin) Invitación al portón por ID y días.
 - `/invite_songs <user_id> <cantidad> [horas]`: (Admin only) Invitar por ID a un usuario con un cupo limitado de canciones (solo puede usar `/generate_song`).
 - `/grant_songs <user_id> <cantidad>`: (Admin only) Añadir más canciones al cupo de un invitado.
 - `/estado_invitaciones`: (Admin only) Ver estado de invitaciones: canciones generadas, restantes y expiración.
@@ -180,7 +182,7 @@ Si prefieres seguir usando el archivo `.bat` directamente, en el equipo remoto (
 
 Puedes invitar a otras personas con un **cupo limitado de canciones**: solo podrán usar el flujo de crear canción (`/generate_song` y `/solicitar_canciones`), no el resto de funciones del bot.
 
-- **Admin:** `/invite_songs <user_id> <cantidad>` crea la invitación. Cuando agoten el cupo, pueden usar `/solicitar_canciones`; tú les das más con `/grant_songs <user_id> <cantidad>`.
+- **Canciones:** `/invite_songs <user_id> <cantidad>` o `/invite_link <cantidad>` (enlace por privado). Cuando agoten el cupo, `/solicitar_canciones` y tú usas `/grant_songs <user_id> <cantidad>`. **Portón:** `/invite_gate <user_id> <días>` o `/invite_link_gate <días>`; el invitado usa `/gate_open` y el bot reenvía la orden a `GATE_PROXY_URL`.
 - **Avisos al admin:** La primera vez que un invitado use `/generate_song` recibirás un mensaje de “aceptación”. Cada vez que alguien genere una canción, recibirás una **copia en privado**: audio, JSON de la API y botón **“Guardar en servidor”** (solo tú puedes guardar audio + JSON; el usuario solo descarga el MP3).
 - **Estado:** `/estado_invitaciones` muestra todas las invitaciones activas: quién, cuántas canciones ha generado, cuántas le quedan y fecha de expiración.
 

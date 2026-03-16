@@ -14,6 +14,12 @@ class AppSettings(BaseSettings):
 
     # From .env
     BOT_TOKEN: str
+    # Secreto para cifrar enlaces de invitación (si no se define, se usa BOT_TOKEN)
+    INVITE_LINK_SECRET: Optional[str] = None
+    # Proxy del portón: URL a la que este bot envía la orden de abrir cuando un invitado usa /gate_open
+    # (el otro bot o servicio debe exponer un endpoint que acepte POST con GATE_PROXY_SECRET y opcionalmente guest_id)
+    GATE_PROXY_URL: Optional[str] = None
+    GATE_PROXY_SECRET: Optional[str] = None
     PC_MAC: str
     PC_IP: str
     SSH_USER: str

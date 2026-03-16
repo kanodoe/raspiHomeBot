@@ -246,3 +246,53 @@ class PermissionService:
             }
             for inv in rows
         ]
+
+    # --- Invitaciones por portón (acceso por N días; el bot envía la orden al otro bot vía proxy) ---
+
+    async def get_gate_invitation(self, telegram_id: int):
+        """Invitación activa de portón (gate_expires_at en el futuro)."""
+        stmt = select(Invitation).where(
+            Invitation.invitee_telegram_id == telegram_id,
+            Invitation.gate_expires_at.isnot(None),
+            Invitation.gate_expires_at > datetime.utcnow(),
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def can_open_gate(self, telegram_id: int) -> bool:
+        """True si es USER/ADMIN o tiene invitación de portón activa."""
+        role = await self.get_user_role(telegram_id)
+        if role in (UserRole.USER, UserRole.ADMIN):
+            return True
+        return await self.get_gate_invitation(telegram_id) is not None
+
+    async def create_gate_invitation(
+        self,
+        inviter_id: int,
+        invitee_id: int,
+        invitee_username: str,
+        days: int,
+    ) -> Invitation:
+        """Crea o actualiza invitación de portón (acceso por días). No toca song_quota."""
+        expiration = datetime.utcnow() + timedelta(days=days)
+        stmt = select(Invitation).where(Invitation.invitee_telegram_id == invitee_id)
+        result = await self.db.execute(stmt)
+        existing = result.scalar_one_or_none()
+        if existing:
+            existing.inviter_id = inviter_id
+            existing.invitee_username = invitee_username
+            existing.gate_expires_at = expiration
+            if existing.expiration_time < expiration or existing.expiration_time is None:
+                existing.expiration_time = expiration
+            await self.db.commit()
+            return existing
+        inv = Invitation(
+            inviter_id=inviter_id,
+            invitee_telegram_id=invitee_id,
+            invitee_username=invitee_username,
+            expiration_time=expiration,
+            gate_expires_at=expiration,
+        )
+        self.db.add(inv)
+        await self.db.commit()
+        return inv

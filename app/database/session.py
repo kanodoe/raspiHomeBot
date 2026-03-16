@@ -13,6 +13,7 @@ def _add_invitation_song_columns(conn):
         ("song_quota", "INTEGER"),
         ("songs_used", "INTEGER DEFAULT 0"),
         ("first_used_at", "DATETIME"),
+        ("gate_expires_at", "DATETIME"),
     ]:
         try:
             conn.execute(text(f"ALTER TABLE invitations ADD COLUMN {col} {spec}"))

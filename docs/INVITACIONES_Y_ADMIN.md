@@ -56,19 +56,42 @@ Puedes invitar a alguien **sin saber su Telegram ID** usando un enlace:
 
 No hace falta que tengas a la persona en la lista del bot ni que sepas su ID.
 
+### Seguridad del enlace
+
+El valor del enlace va **cifrado** (Fernet). Así nadie puede cambiar el número editando la URL. Si se define `INVITE_LINK_SECRET` en el `.env`, se usa para cifrar; si no, se usa `BOT_TOKEN`.
+
+**Formato del payload (interno, cifrado):**
+- **Canciones:** `{"t": "songs", "c": N}` con opcionales `"exp"` (timestamp de expiración del enlace) y `"n"` (máx. usos del enlace, para uso futuro).
+- **Portón:** `{"t": "gate", "d": N}` (días de acceso), con opcionales `"exp"` y `"n"`.
+
+---
+
+## Invitación al portón (otro bot)
+
+El **portón** puede estar controlado por **otro bot** (o servicio). Este proyecto no tiene acceso directo a ese bot; en su lugar:
+
+1. **Invitación por días:** Con `/invite_gate <user_id> <días>` o `/invite_link_gate <días>` (enlace cifrado que te envían por privado) das a alguien acceso al portón durante N días.
+2. **Uso:** El invitado escribe **`/gate_open`** en *este* bot. Este bot comprueba que tiene invitación de portón activa y entonces **envía una petición al servicio del portón** (proxy), de forma que el otro bot/servicio abre el portón **como si lo hubieras pedido tú** (autorizado por secreto compartido).
+3. **Configuración:** En `.env` defines `GATE_PROXY_URL` (endpoint al que este bot hace POST) y `GATE_PROXY_SECRET`. El otro proyecto (el bot del portón o un servicio intermedio) debe exponer un endpoint que acepte POST con ese secreto y, opcionalmente, `guest_telegram_id` y `admin_telegram_id`, y entonces ejecute la apertura del portón.
+
+Así se separan responsabilidades: este proyecto solo **configura** invitaciones y **reenvía** la orden al proxy; el bot/servicio del portón es quien realmente abre. Si prefieres que un **segundo bot** (proxy) reciba la orden y hable con el bot del portón, puedes desplegar ese proxy y poner su URL en `GATE_PROXY_URL`; la configuración de invitaciones sigue siendo esta misma.
+
 ---
 
 ## Resumen de comandos
 
 | Comando | Quién | Descripción |
 |--------|--------|-------------|
-| `/invite_link <cantidad>` | Admin | Genera un enlace de invitación; el bot te lo envía por privado. Quien lo abra recibe ese cupo de canciones. |
-| `/invite_songs <user_id> <cantidad> [horas]` | Admin | Invitar por ID a un usuario con un cupo limitado de canciones. |
+| `/invite_link <cantidad>` | Admin | Enlace de invitación (canciones); te lo envía por privado. |
+| `/invite_link_gate <días>` | Admin | Enlace de invitación al portón (días); te lo envía por privado. |
+| `/invite_gate <user_id> <días>` | Admin | Invitación al portón por ID y número de días. |
+| `/invite_songs <user_id> <cantidad> [horas]` | Admin | Invitar por ID con cupo de canciones. |
 | `/grant_songs <user_id> <cantidad>` | Admin | Añadir más canciones al cupo de un usuario. |
 | `/solicitar_canciones` | Invitados con cupo | Solicitar más canciones al administrador. |
-| `/estado_invitaciones` | Admin | Ver estado de todas las invitaciones (generadas, restantes, expiración). |
-| `/generate_song` | Usuario o invitado con cupo | Crear una canción (el invitado solo puede usar esto y solicitar más). |
-| `/save_song` | Quien generó / Admin | Guardar la última canción en el servidor (el usuario guarda la suya; tú puedes guardar la copia que te enviamos). |
+| `/estado_invitaciones` | Admin | Ver estado de invitaciones (canciones). |
+| `/gate_open` | Usuario o invitado portón | Abrir el portón (invitados: vía proxy al otro bot). |
+| `/generate_song` | Usuario o invitado con cupo | Crear una canción. |
+| `/save_song` | Quien generó / Admin | Guardar la última canción en el servidor. |
 
 ## Documentación técnica
 

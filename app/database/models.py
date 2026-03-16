@@ -35,3 +35,5 @@ class Invitation(Base):
     song_quota: Mapped[Optional[int]] = mapped_column(nullable=True, default=None)
     songs_used: Mapped[int] = mapped_column(default=0)
     first_used_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, default=None)
+    # Invitación por portón: gate_expires_at != null => puede abrir el portón hasta esa fecha (vía proxy al otro bot)
+    gate_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, default=None)
