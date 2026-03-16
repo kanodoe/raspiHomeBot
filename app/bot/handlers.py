@@ -1070,8 +1070,8 @@ async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYP
         return ConversationHandler.END
 
     await update.message.reply_text(
-        "Iniciando generación... Esto puede tardar unos minutos.\n"
-        "Si te gusta el resultado, podrás guardarla permanentemente con /save_song.",
+        "Solicitud recibida. Si ya hay una canción en proceso, estarás en cola y te avisaremos tu posición y cuando empiece tu turno.\n"
+        "Esto puede tardar unos minutos. Si te gusta el resultado, podrás guardarla con /save_song.",
         reply_markup=ReplyKeyboardRemove()
     )
 

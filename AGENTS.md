@@ -40,5 +40,6 @@ Este documento describe el proyecto para que los agentes (Cursor, Copilot, etc.)
 ## Convenciones
 
 - **Event Bus:** eventos conocidos incluyen `command`, `cmd.acestep.start`/`stop`/`generate`/`save`, `cmd.ollama.start`/`stop`, `notify.status`, `notify.error`, `notify.audio`, `notify.info`.
+- **Cola de generación:** solo se procesa una canción a la vez. Si llega otra solicitud (`cmd.acestep.generate`) mientras hay una en curso, se encola. Se notifica: posición en cola al entrar, actualización de posición cuando avanza la cola, y "tu turno" cuando comienza la generación del usuario (lógica en `AceStepController`).
 - **Origen de notificaciones:** `source` suele ser `chat_<chat_id>` para enviar la respuesta al chat correcto.
 - **Configuración:** leer de `app.core.config.settings`; opcionalmente `config.yaml` para intervalos y `SSH_PORT`.

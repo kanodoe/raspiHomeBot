@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
 from app.core.module import BaseModule
 from app.core.logging import logger
 from app.services.acestep_service import AceStepService
@@ -9,12 +9,16 @@ import io
 class AceStepController(BaseModule):
     """
     Module to manage ACE-Step API, Ollama and song generation.
+    Solo se procesa una canción a la vez; las solicitudes extra entran en cola
+    y se notifica posición y cuando comienza el turno.
     """
-    __slots__ = ("last_generated_songs",)
+    __slots__ = ("last_generated_songs", "_generation_queue", "_generation_processing")
 
     def __init__(self, bus):
         super().__init__(bus)
-        self.last_generated_songs = {} # {source: {"audio": bytes, "metadata": dict, "task_id": str}}
+        self.last_generated_songs = {}  # {source: {"audio": bytes, "metadata": dict, "task_id": str}}
+        self._generation_queue: List[Dict[str, Any]] = []
+        self._generation_processing = False
 
     async def start(self):
         self.bus.subscribe("cmd.acestep.start", self._handle_start)
@@ -87,16 +91,17 @@ class AceStepController(BaseModule):
         else:
             await self.bus.publish("notify.error", {"message": "⚠️ No se pudo detener Ollama. Puede que se iniciara externamente o no sea accesible vía SSH.", "source": source})
 
-    async def _handle_generate(self, data: Dict[str, Any]):
+    async def _process_one_generation(self, data: Dict[str, Any]) -> None:
+        """Ejecuta la generación de una sola canción (API, envío, polling, notificaciones)."""
         source = data.get("source")
         prompt = data.get("prompt")
         lyrics = data.get("lyrics", "")
         user_id = data.get("user_id")
         username = data.get("username") or (str(user_id) if user_id else "?")
+        display_name = data.get("display_name") or username
 
         logger.info(f"AceStepController: Generating song (source: {source}, prompt: {prompt})")
-        
-        # Check if API is ready, if not, try to start it
+
         if not await AceStepService.is_api_ready():
             await self.bus.publish("notify.status", {"message": "⏳ La API de ACE-Step no está lista. Intentando iniciarla...", "source": source})
             success, error_msg = await AceStepService.start_api()
@@ -112,37 +117,32 @@ class AceStepController(BaseModule):
             await self.bus.publish("notify.error", {"message": "Error al enviar la tarea de generación. Si el servicio no está disponible, contacta al administrador.", "source": source})
             return
 
-        display_name = data.get("display_name") or username
         await self.bus.publish("notify.status", {"message": f"Tarea de generación enviada (ID: {task_id}). Procesando...", "source": source})
-        
-        # Poll for completion
-        max_attempts = 60 # 5 minutes approx with 5s sleep
+
+        max_attempts = 60
         for _ in range(max_attempts):
             await asyncio.sleep(5)
             status_data = await AceStepService.get_task_status(task_id)
             if not status_data:
                 continue
-            
+
             status = status_data.get("status")
             if status == "completed":
                 audio_path = status_data.get("audio_path")
                 if audio_path:
                     audio_bytes = await AceStepService.download_audio(audio_path)
                     if audio_bytes:
-                        # Cache for potential saving later
                         self.last_generated_songs[source] = {
                             "audio": audio_bytes,
                             "metadata": status_data,
                             "task_id": task_id
                         }
-                        
                         await self.bus.publish("notify.audio", {
                             "audio": audio_bytes,
                             "filename": f"song_{task_id}.mp3",
                             "source": source,
                             "caption": f"¡Aquí tienes tu canción!\nEstilo: {prompt}"
                         })
-                        # Copia al admin: quién generó + audio + JSON para guardar
                         await self.bus.publish("notify.admin.song_generated", {
                             "audio": audio_bytes,
                             "metadata": status_data,
@@ -161,6 +161,48 @@ class AceStepController(BaseModule):
                 error_msg = status_data.get("error", "Error desconocido")
                 await self.bus.publish("notify.error", {"message": f"Error en la generación: {error_msg} Si el servicio no está disponible, contacta al administrador.", "source": source})
                 return
+
+    async def _handle_generate(self, data: Dict[str, Any]):
+        source = data.get("source")
+
+        if self._generation_processing:
+            self._generation_queue.append(data)
+            position = len(self._generation_queue)
+            total = position  # total en espera = los que están en cola (él es el último)
+            await self.bus.publish("notify.status", {
+                "message": f"📋 Hay una canción en proceso. Estás en cola: posición N.º {position} de {total} en espera. Te avisaremos cuando empiece tu turno.",
+                "source": source,
+            })
+            return
+
+        self._generation_processing = True
+        try:
+            await self.bus.publish("notify.status", {
+                "message": "▶️ Tu turno: la generación de tu canción ha comenzado.",
+                "source": source,
+            })
+            await self._process_one_generation(data)
+        finally:
+            self._generation_processing = False
+            while self._generation_queue:
+                next_item = self._generation_queue.pop(0)
+                next_source = next_item.get("source")
+                await self.bus.publish("notify.status", {
+                    "message": "▶️ Tu turno: la generación de tu canción ha comenzado.",
+                    "source": next_source,
+                })
+                for i, item in enumerate(self._generation_queue):
+                    pos = i + 1
+                    total = len(self._generation_queue) + 1
+                    await self.bus.publish("notify.status", {
+                        "message": f"📋 Tu posición en cola: ahora eres el N.º {pos} de {total} en espera. Te avisaremos cuando empiece tu turno.",
+                        "source": item["source"],
+                    })
+                self._generation_processing = True
+                try:
+                    await self._process_one_generation(next_item)
+                finally:
+                    self._generation_processing = False
         
     async def _handle_save(self, data: Dict[str, Any]):
         source = data.get("source")
