@@ -34,52 +34,82 @@ from app.modules.permission_controller import PermissionController
 from app.modules.acestep_controller import AceStepController
 
 # Telegram Bot Setup
+def get_enabled_modules():
+    return [m.strip().lower() for m in settings.ENABLED_MODULES.split(",")]
+
 async def register_commands(bot):
-    commands = [
-        BotCommand("start", "Ver mi ID y estado del bot"),
-        BotCommand("pc_on", "Encender PC (WOL)"),
-        BotCommand("pc_off", "Apagar PC (SSH)"),
-        BotCommand("pc_status", "Estado de red del PC"),
-        BotCommand("status", "Resumen del sistema"),
-        BotCommand("gate_open", "Abrir el portón (Invitados)"),
-        BotCommand("invite", "Invitar usuario (Admin)"),
-        BotCommand("acestep_start", "Iniciar ACE-Step API"),
-        BotCommand("acestep_stop", "Detener ACE-Step API"),
-        BotCommand("ollama_start", "Iniciar Ollama"),
-        BotCommand("ollama_stop", "Detener Ollama"),
-        BotCommand("generate_song", "Generar una canción (AI)")
-    ]
+    enabled = get_enabled_modules()
+    commands = [BotCommand("start", "Ver mi ID y estado del bot")]
+    
+    if "pc" in enabled:
+        commands.extend([
+            BotCommand("pc_on", "Encender PC (WOL)"),
+            BotCommand("pc_off", "Apagar PC (SSH)"),
+            BotCommand("pc_status", "Estado de red del PC"),
+        ])
+    
+    if "gate" in enabled:
+        commands.append(BotCommand("gate_open", "Abrir el portón (Invitados)"))
+        commands.append(BotCommand("invite", "Invitar usuario (Admin)"))
+    
+    commands.append(BotCommand("status", "Resumen del sistema"))
+    
+    if "acestep" in enabled:
+        commands.extend([
+            BotCommand("acestep_start", "Iniciar ACE-Step API"),
+            BotCommand("acestep_stop", "Detener ACE-Step API"),
+        ])
+    
+    if "ollama" in enabled:
+        commands.extend([
+            BotCommand("ollama_start", "Iniciar Ollama"),
+            BotCommand("ollama_stop", "Detener Ollama"),
+        ])
+        
+    if "acestep" in enabled: # Generate song needs acestep
+        commands.append(BotCommand("generate_song", "Generar una canción (AI)"))
+        
     await bot.set_my_commands(commands)
     logger.info("Telegram bot commands registered in API.")
 
 def setup_bot():
+    enabled = get_enabled_modules()
     application = ApplicationBuilder().token(settings.BOT_TOKEN).build()
     
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("pc_on", pc_on))
-    application.add_handler(CommandHandler("pc_off", pc_off))
-    application.add_handler(CommandHandler("pc_status", pc_status))
     application.add_handler(CommandHandler("status", status_summary))
-    application.add_handler(CommandHandler("gate_open", gate_open))
-    application.add_handler(CommandHandler("invite", invite))
-    application.add_handler(CommandHandler("acestep_start", acestep_start))
-    application.add_handler(CommandHandler("acestep_stop", acestep_stop))
-    application.add_handler(CommandHandler("ollama_start", ollama_start))
-    application.add_handler(CommandHandler("ollama_stop", ollama_stop))
 
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("generate_song", generate_song_start)],
-        states={
-            MODE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_mode)],
-            AI_PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_ai_prompt)],
-            AI_REVIEW: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_ai_review)],
-            STYLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_style)],
-            LYRICS_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_lyrics_choice)],
-            LYRICS_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_lyrics_text)],
-        },
-        fallbacks=[CommandHandler("cancel", generate_song_cancel)],
-    )
-    application.add_handler(conv_handler)
+    if "pc" in enabled:
+        application.add_handler(CommandHandler("pc_on", pc_on))
+        application.add_handler(CommandHandler("pc_off", pc_off))
+        application.add_handler(CommandHandler("pc_status", pc_status))
+
+    if "gate" in enabled:
+        application.add_handler(CommandHandler("gate_open", gate_open))
+        application.add_handler(CommandHandler("invite", invite))
+
+    if "acestep" in enabled:
+        application.add_handler(CommandHandler("acestep_start", acestep_start))
+        application.add_handler(CommandHandler("acestep_stop", acestep_stop))
+
+    if "ollama" in enabled:
+        application.add_handler(CommandHandler("ollama_start", ollama_start))
+        application.add_handler(CommandHandler("ollama_stop", ollama_stop))
+
+    if "acestep" in enabled:
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler("generate_song", generate_song_start)],
+            states={
+                MODE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_mode)],
+                AI_PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_ai_prompt)],
+                AI_REVIEW: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_ai_review)],
+                STYLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_style)],
+                LYRICS_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_lyrics_choice)],
+                LYRICS_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_lyrics_text)],
+            },
+            fallbacks=[CommandHandler("cancel", generate_song_cancel)],
+        )
+        application.add_handler(conv_handler)
     
     return application
 
@@ -102,19 +132,29 @@ async def lifespan(app: FastAPI):
     app.state.bus = bus
     
     # Initialize Modules
+    enabled = get_enabled_modules()
     notifier = Notifier(bus)
     modules = [
         StateStore(bus),
         CommandRouter(bus),
-        ZigbeeAdapter(bus),
-        ArloAdapter(bus),
-        SchedulerModule(bus),
-        notifier,
-        PCController(bus),
-        GateController(bus),
-        PermissionController(bus),
-        AceStepController(bus)
+        notifier
     ]
+    
+    if "zigbee" in enabled:
+        modules.append(ZigbeeAdapter(bus))
+    if "arlo" in enabled:
+        modules.append(ArloAdapter(bus))
+    if "scheduler" in enabled:
+        modules.append(SchedulerModule(bus))
+    if "pc" in enabled:
+        modules.append(PCController(bus))
+    if "gate" in enabled:
+        modules.append(GateController(bus))
+    if "pc" in enabled or "gate" in enabled: # Permission is usually needed for core features
+        modules.append(PermissionController(bus))
+    if "acestep" in enabled:
+        modules.append(AceStepController(bus))
+        
     app.state.modules = modules
     
     # Start Modules

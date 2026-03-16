@@ -2,6 +2,7 @@ import asyncio
 import os
 import subprocess
 import httpx
+from pathlib import Path
 from typing import Optional, Dict, Any
 from app.core.config import settings
 from app.core.logging import logger
@@ -16,18 +17,26 @@ class AceStepService:
             logger.info("ACE-Step API is already running.")
             return True
 
-        bat_path = os.path.join(settings.ACESTEP_PATH, "start_api_server.bat")
-        if not os.path.exists(bat_path):
+        ace_path = Path(settings.ACESTEP_PATH)
+        bat_path = ace_path / "start_api_server.bat"
+        
+        if not bat_path.exists():
             logger.error(f"ACE-Step bat file not found at: {bat_path}")
             return False
 
         try:
-            # We use creationflags to run it in a new console window or detached if needed
-            # For now, let's just run it. shell=True is needed for .bat
+            # En Windows, usamos env vars para saltar el check de update
+            # según vimos en el archivo .bat (set CHECK_UPDATE=true)
+            # Podríamos intentar sobreescribirla pasando una variable de entorno al proceso.
+            env = os.environ.copy()
+            env["CHECK_UPDATE"] = "false"
+
+            # shell=True es necesario para .bat en Windows
             cls._process = subprocess.Popen(
-                [bat_path],
-                cwd=settings.ACESTEP_PATH,
+                [str(bat_path)],
+                cwd=str(ace_path),
                 shell=True,
+                env=env,
                 creationflags=subprocess.CREATE_NEW_CONSOLE
             )
             logger.info(f"ACE-Step API started with PID: {cls._process.pid}")

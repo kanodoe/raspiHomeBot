@@ -30,6 +30,24 @@ A production-ready home automation system for Raspberry Pi, controlled via Teleg
     - Consolidated background tasks into a single module, eliminating `APScheduler`.
     - Optimized Docker image with minimized environment and Python optimization flags.
 
+## Configuración de Módulos
+
+El bot permite habilitar o deshabilitar módulos específicos según tus necesidades. Esto afectará tanto a los procesos internos como a los comandos disponibles en Telegram.
+
+Configura la variable `ENABLED_MODULES` en tu archivo `.env`:
+```env
+ENABLED_MODULES=pc,gate,acestep,ollama,zigbee,arlo,scheduler
+```
+
+Módulos disponibles:
+- `pc`: Comandos `/pc_on`, `/pc_off`, `/pc_status`.
+- `gate`: Comandos `/gate_open`, `/invite`.
+- `acestep`: Comandos `/acestep_start`, `/acestep_stop`, `/generate_song`.
+- `ollama`: Comandos `/ollama_start`, `/ollama_stop` (asistencia en `/generate_song`).
+- `zigbee`: Adaptador para dispositivos Zigbee.
+- `arlo`: Adaptador para cámaras Arlo.
+- `scheduler`: Tareas programadas en segundo plano.
+
 ## Project Structure
 
 ```text

@@ -35,6 +35,8 @@ class CommandRouter(BaseModule):
             "arlo_status": "cmd.arlo.status",
             "acestep_start": "cmd.acestep.start",
             "acestep_stop": "cmd.acestep.stop",
+            "ollama_start": "cmd.ollama.start",
+            "ollama_stop": "cmd.ollama.stop",
             "acestep_generate": "cmd.acestep.generate"
         }
         

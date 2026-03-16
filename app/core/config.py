@@ -29,6 +29,9 @@ class AppSettings(BaseSettings):
     # Ollama Settings
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3" # Default to llama3, user can change in .env
+    
+    # Enabled Modules (comma-separated list)
+    ENABLED_MODULES: str = "pc,gate,acestep,ollama,zigbee,arlo,scheduler"
 
     # From config.yaml (default values or loaded later)
     LOG_LEVEL: str = "INFO"

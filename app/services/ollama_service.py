@@ -31,6 +31,7 @@ class OllamaService:
             # If it's in PATH, this should work.
             cls._process = subprocess.Popen(
                 ["ollama", "serve"],
+                shell=True if os.name == 'nt' else False,
                 creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
             )
             logger.info(f"Ollama started with PID: {cls._process.pid}")
