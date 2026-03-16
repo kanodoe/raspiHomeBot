@@ -54,7 +54,7 @@ async def pc_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await WOLService.shutdown()
         await update.message.reply_text("Shutdown command sent. (Bus not found)")
 
-@restricted(UserRole.GUEST)
+@restricted(UserRole.USER)
 async def pc_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bus = context.bot_data.get("bus")
     if bus:
@@ -64,7 +64,7 @@ async def pc_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status = await WOLService.get_pc_status()
         await update.message.reply_text(f"PC Status: {status}")
 
-@restricted(UserRole.GUEST)
+@restricted(UserRole.USER)
 async def status_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bus = context.bot_data.get("bus")
     if bus:
