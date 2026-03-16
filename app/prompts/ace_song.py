@@ -114,33 +114,69 @@ def build_user_prompt(
     return out
 
 
+def _normalize_style(value) -> str:
+    """Convierte style a string. Si el modelo devuelve un objeto (genre, instruments, tempo, mood), lo aplana en una línea para ACE-Step."""
+    if value is None:
+        return "Pop rock"
+    if isinstance(value, str):
+        return value.strip() or "Pop rock"
+    if isinstance(value, dict):
+        parts = []
+        for k, v in value.items():
+            if v is None:
+                continue
+            if isinstance(v, list):
+                parts.append(" ".join(str(x) for x in v))
+            else:
+                parts.append(str(v))
+        return ", ".join(parts).strip() or "Pop rock"
+    return str(value).strip() or "Pop rock"
+
+
+def _normalize_lyrics(value) -> str:
+    """Asegura que lyrics sea un string."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
 def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
     """
     Parse the LLM response into a dict with 'style' and 'lyrics'.
 
     Tolerates markdown code blocks and extra text; extracts the first JSON object found.
-
-    Args:
-        response_text: Raw response from the LLM.
-
-    Returns:
-        Dict with keys 'style' and 'lyrics'. If parsing fails, returns a fallback
-        with 'style' set to a generic value and 'lyrics' to the raw text.
+    Si el modelo devuelve "style" como objeto (p. ej. genre, instruments, tempo, mood),
+    se convierte a una sola línea para ACE-Step.
     """
     if not response_text or not response_text.strip():
         return {"style": "Pop rock", "lyrics": ""}
 
     try:
-        # Find JSON object (possibly wrapped in markdown or extra text)
         match = re.search(r"\{.*\}", response_text, re.DOTALL)
         if match:
-            data = json.loads(match.group(0))
-            return {
-                "style": data.get("style", "Pop rock"),
-                "lyrics": data.get("lyrics", ""),
-            }
-    except (json.JSONDecodeError, KeyError):
-        pass  # fallback below
+            raw = match.group(0)
+            data = None
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                # Respuesta truncada: intentar cerrar llaves y comillas
+                if raw.count("{") > raw.count("}"):
+                    for _ in range(5):
+                        raw += "}"
+                        try:
+                            data = json.loads(raw)
+                            break
+                        except json.JSONDecodeError:
+                            continue
+            if data is not None:
+                return {
+                    "style": _normalize_style(data.get("style")),
+                    "lyrics": _normalize_lyrics(data.get("lyrics")),
+                }
+    except (KeyError, TypeError):
+        pass
 
     return {
         "style": "Error parseando respuesta de IA",
