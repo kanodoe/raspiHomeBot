@@ -41,12 +41,20 @@ ENABLED_MODULES=pc,gate,acestep,ollama,zigbee,arlo,scheduler
 
 Módulos disponibles:
 - `pc`: Comandos `/pc_on`, `/pc_off`, `/pc_status`.
-- `gate`: Comandos `/gate_open`, `/invite`, `/invite_link_gate`, `/invite_gate`.
+- `gate`: Comandos `/gate_open`, `/invite`, `/gate_invite_link`, `/gate_invite`.
 - `acestep`: Comandos `/acestep_start`, `/acestep_stop`, `/generate_song`.
 - `ollama`: Comandos `/ollama_start`, `/ollama_stop` (asistencia en `/generate_song`).
 - `zigbee`: Adaptador para dispositivos Zigbee.
 - `arlo`: Adaptador para cámaras Arlo.
 - `scheduler`: Tareas programadas en segundo plano.
+
+### Modo multi-bot (BOT_MODE)
+
+Puedes ejecutar el mismo código en tres modos con `BOT_MODE=admin|songs|gate` (por defecto `admin`). En `admin` se registran todos los comandos; en `songs` solo start, generate_song y request_songs; en `gate` solo start, gate_open, entrada y salida. Cada proceso usa su propio token: `BOT_TOKEN_ADMIN`, `BOT_TOKEN_SONGS`, `BOT_TOKEN_GATE` (si no se define el del modo, se usa `BOT_TOKEN`). Los enlaces de invitación pueden apuntar a bots distintos con `SONGS_BOT_USERNAME` y `GATE_BOT_USERNAME`. Ver [docs/INVITACIONES_Y_ADMIN.md](docs/INVITACIONES_Y_ADMIN.md).
+
+### API de consulta
+
+Endpoints GET de solo lectura para users, invitations, quotas, operations y access-requests bajo `/api/*`. Opcionalmente protegidos con `API_KEY`. Colección Postman/Bruno en `docs/api/raspiHomeBot-api.postman_collection.json`. Ver [docs/API.md](docs/API.md).
 
 ## Project Structure
 
@@ -112,12 +120,12 @@ graph TD
 - `/gate_open`: Abrir el portón (usuarios completos o invitados con acceso al portón por días).
 - `/invite <user_id> <hours>h`: (Admin) Acceso temporal a otro usuario.
 - `/invite_link <cantidad>`: (Admin) Enlace de invitación por canciones; te lo envía por privado.
-- `/invite_link_gate <días>`: (Admin) Enlace de invitación al portón (acceso por N días); te lo envía por privado.
-- `/invite_gate <user_id> <días>`: (Admin) Invitación al portón por ID y días.
+- `/gate_invite_link <días>`: (Admin) Enlace de invitación al portón (acceso por N días); te lo envía por privado.
+- `/gate_invite <user_id> <días>`: (Admin) Invitación al portón por ID y días.
 - `/invite_songs <user_id> <cantidad> [horas]`: (Admin only) Invitar por ID a un usuario con un cupo limitado de canciones (solo puede usar `/generate_song`).
 - `/grant_songs <user_id> <cantidad>`: (Admin only) Añadir más canciones al cupo de un invitado.
-- `/estado_invitaciones`: (Admin only) Ver estado de invitaciones: canciones generadas, restantes y expiración.
-- `/solicitar_canciones`: (Invitados con cupo) Solicitar más canciones al administrador.
+- `/invitations_status`: (Admin) Ver estado de invitaciones: canciones generadas, restantes y expiración.
+- `/request_songs`: (Invitados con cupo) Solicitar más canciones al administrador.
 - `/acestep_start`: Start the ACE-Step API on the host machine.
 - `/acestep_stop`: Stop the ACE-Step API.
 - `/save_song`: Guardar la última canción generada en el servidor (audio + JSON).
@@ -180,11 +188,11 @@ Si prefieres seguir usando el archivo `.bat` directamente, en el equipo remoto (
 
 ## Invitaciones por cupo de canciones y administrador
 
-Puedes invitar a otras personas con un **cupo limitado de canciones**: solo podrán usar el flujo de crear canción (`/generate_song` y `/solicitar_canciones`), no el resto de funciones del bot.
+Puedes invitar a otras personas con un **cupo limitado de canciones**: solo podrán usar el flujo de crear canción (`/generate_song` y `/request_songs`), no el resto de funciones del bot.
 
-- **Canciones:** `/invite_songs <user_id> <cantidad>` o `/invite_link <cantidad>` (enlace por privado). Cuando agoten el cupo, `/solicitar_canciones` y tú usas `/grant_songs <user_id> <cantidad>`. **Portón:** `/invite_gate <user_id> <días>` o `/invite_link_gate <días>`; el invitado usa `/gate_open` y el bot reenvía la orden a `GATE_PROXY_URL`.
+- **Canciones:** `/invite_songs <user_id> <cantidad>` o `/invite_link <cantidad>` (enlace por privado). Cuando agoten el cupo, `/request_songs` y tú usas `/grant_songs <user_id> <cantidad>`. **Portón:** `/gate_invite <user_id> <días>` o `/gate_invite_link <días>`; el invitado usa `/gate_open` y el bot reenvía la orden a `GATE_PROXY_URL`.
 - **Avisos al admin:** La primera vez que un invitado use `/generate_song` recibirás un mensaje de “aceptación”. Cada vez que alguien genere una canción, recibirás una **copia en privado**: audio, JSON de la API y botón **“Guardar en servidor”** (solo tú puedes guardar audio + JSON; el usuario solo descarga el MP3).
-- **Estado:** `/estado_invitaciones` muestra todas las invitaciones activas: quién, cuántas canciones ha generado, cuántas le quedan y fecha de expiración.
+- **Estado:** `/invitations_status` muestra todas las invitaciones activas: quién, cuántas canciones ha generado, cuántas le quedan y fecha de expiración.
 
 **Limitación de Telegram:** No es posible que cada usuario vea un menú de comandos distinto (“su propia instancia”); todos ven la misma lista de `/`. El bot ya restringe por permisos: los invitados solo pueden usar los comandos de canciones.
 
@@ -194,7 +202,7 @@ Documentación detallada: [docs/INVITACIONES_Y_ADMIN.md](docs/INVITACIONES_Y_ADM
 
 ### El bot no arranca: "BOT_TOKEN was rejected" / 401 Unauthorized
 - **Causa:** El token de Telegram en `.env` es inválido, está revocado o no existe.
-- **Solución:** Obtén un token válido en [@BotFather](https://t.me/BotFather) (crea un bot o usa "API Token" en un bot existente). Ponlo en `.env` como `BOT_TOKEN=...`. Si el token llegó a verse en logs o en público, revócalo en BotFather y genera uno nuevo.
+- **Solución:** Obtén un token válido en [@BotFather](https://t.me/BotFather) (crea un bot o usa "API Token" en un bot existente). Ponlo en `.env` como `BOT_TOKEN=...` o, si usas varios bots, el del modo actual: `BOT_TOKEN_ADMIN`, `BOT_TOKEN_SONGS` o `BOT_TOKEN_GATE`. Si el token llegó a verse en logs o en público, revócalo en BotFather y genera uno nuevo.
 
 ### La API de ACE-Step o Ollama “no se ve” desde el bot
 - **Causa habitual:** El servicio está escuchando en `127.0.0.1` (solo localhost). Desde el contenedor no se puede conectar.

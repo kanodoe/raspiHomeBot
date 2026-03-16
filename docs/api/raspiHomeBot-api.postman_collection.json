@@ -1,0 +1,98 @@
+{
+  "info": {
+    "name": "RaspiHomeBot API",
+    "description": "Endpoints de consulta de la base de datos (users, invitations, quotas, operations, access-requests).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "api_key", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true }
+            ],
+            "url": "{{base_url}}/api/users?limit=20&offset=0"
+          }
+        },
+        {
+          "name": "Get user by telegram_id",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true }
+            ],
+            "url": "{{base_url}}/api/users/123456789"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invitations",
+      "item": [
+        {
+          "name": "List invitations",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true }
+            ],
+            "url": "{{base_url}}/api/invitations?limit=20&offset=0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quotas",
+      "item": [
+        {
+          "name": "List quotas",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true }
+            ],
+            "url": "{{base_url}}/api/quotas?limit=20&offset=0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Operations",
+      "item": [
+        {
+          "name": "List operations",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true }
+            ],
+            "url": "{{base_url}}/api/operations?limit=20&offset=0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Access requests",
+      "item": [
+        {
+          "name": "List access requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true }
+            ],
+            "url": "{{base_url}}/api/access-requests?limit=20&offset=0"
+          }
+        }
+      ]
+    }
+  ]
+}

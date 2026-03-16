@@ -37,7 +37,7 @@ En la práctica, cada usuario "ve" un comportamiento distinto según su rol (adm
 
 ### 4. Estado de invitaciones y canciones
 
-- Comando **`/estado_invitaciones`** (solo admin): lista todas las invitaciones por cupo de canciones con:
+- Comando **`/invitations_status`** (solo admin): lista todas las invitaciones por cupo de canciones con:
   - Usuario (ID y nombre si existe).
   - Canciones generadas y cupo total.
   - Cuántas le quedan disponibles.
@@ -58,7 +58,7 @@ No hace falta que tengas a la persona en la lista del bot ni que sepas su ID.
 
 ### Seguridad del enlace
 
-El valor del enlace va **cifrado** (Fernet). Así nadie puede cambiar el número editando la URL. Si se define `INVITE_LINK_SECRET` en el `.env`, se usa para cifrar; si no, se usa `BOT_TOKEN`.
+El valor del enlace va **cifrado** (Fernet). Así nadie puede cambiar el número editando la URL. Si se define `INVITE_LINK_SECRET` en el `.env`, se usa para cifrar; si no, se usa el token del bot admin (para que admin codifique y los bots de canciones/portón decodifiquen con el mismo valor).
 
 **Formato del payload (interno, cifrado):**
 - **Canciones:** `{"t": "songs", "c": N}` con opcionales `"exp"` (timestamp de expiración del enlace) y `"n"` (máx. usos del enlace, para uso futuro).
@@ -70,7 +70,7 @@ El valor del enlace va **cifrado** (Fernet). Así nadie puede cambiar el número
 
 El **portón** puede estar controlado por **otro bot** (o servicio). Este proyecto no tiene acceso directo a ese bot; en su lugar:
 
-1. **Invitación por días:** Con `/invite_gate <user_id> <días>` o `/invite_link_gate <días>` (enlace cifrado que te envían por privado) das a alguien acceso al portón durante N días.
+1. **Invitación por días:** Con `/gate_invite <user_id> <días>` o `/gate_invite_link <días>` (enlace cifrado que te envían por privado) das a alguien acceso al portón durante N días.
 2. **Uso:** El invitado escribe **`/gate_open`** en *este* bot. Este bot comprueba que tiene invitación de portón activa y entonces **envía una petición al servicio del portón** (proxy), de forma que el otro bot/servicio abre el portón **como si lo hubieras pedido tú** (autorizado por secreto compartido).
 3. **Configuración:** En `.env` defines `GATE_PROXY_URL` (endpoint al que este bot hace POST) y `GATE_PROXY_SECRET`. El otro proyecto (el bot del portón o un servicio intermedio) debe exponer un endpoint que acepte POST con ese secreto y, opcionalmente, `guest_telegram_id` y `admin_telegram_id`, y entonces ejecute la apertura del portón.
 
@@ -83,12 +83,12 @@ Así se separan responsabilidades: este proyecto solo **configura** invitaciones
 | Comando | Quién | Descripción |
 |--------|--------|-------------|
 | `/invite_link <cantidad>` | Admin | Enlace de invitación (canciones); te lo envía por privado. |
-| `/invite_link_gate <días>` | Admin | Enlace de invitación al portón (días); te lo envía por privado. |
-| `/invite_gate <user_id> <días>` | Admin | Invitación al portón por ID y número de días. |
+| `/gate_invite_link <días>` | Admin | Enlace de invitación al portón (días); te lo envía por privado. |
+| `/gate_invite <user_id> <días>` | Admin | Invitación al portón por ID y número de días. |
 | `/invite_songs <user_id> <cantidad> [horas]` | Admin | Invitar por ID con cupo de canciones. |
 | `/grant_songs <user_id> <cantidad>` | Admin | Añadir más canciones al cupo de un usuario. |
-| `/solicitar_canciones` | Invitados con cupo | Solicitar más canciones al administrador. |
-| `/estado_invitaciones` | Admin | Ver estado de invitaciones (canciones). |
+| `/request_songs` | Invitados con cupo | Solicitar más canciones al administrador. |
+| `/invitations_status` | Admin | Ver estado de invitaciones (canciones). |
 | `/gate_open` | Usuario o invitado portón | Abrir el portón (invitados: vía proxy al otro bot). |
 | `/generate_song` | Usuario o invitado con cupo | Crear una canción. |
 | `/save_song` | Quien generó / Admin | Guardar la última canción en el servidor. |
@@ -96,3 +96,25 @@ Así se separan responsabilidades: este proyecto solo **configura** invitaciones
 ## Documentación técnica
 
 Para más detalle del flujo, permisos y base de datos, ver el [README principal](../README.md) y la sección de invitaciones.
+
+---
+
+## Modo multi-bot y base de datos
+
+El proyecto puede ejecutarse en tres modos (`BOT_MODE` en `.env`: `admin`, `songs`, `gate`), compartiendo la misma base de datos. Cada proceso puede usar su propio token: `BOT_TOKEN_ADMIN`, `BOT_TOKEN_SONGS`, `BOT_TOKEN_GATE`; si no está definido el del modo, se usa `BOT_TOKEN`.
+
+- **admin**: Bot de administración y servicios (PC, ACE-Step, Ollama, invitaciones, estado). Genera enlaces que abren el bot de canciones o el de portón según `SONGS_BOT_USERNAME` y `GATE_BOT_USERNAME`.
+- **songs**: Solo `/start` (con enlace de invitación), `/generate_song` y `/request_songs`. Para usuarios con cupo de canciones.
+- **gate**: Solo `/start` (con enlace de portón), `/gate_open`, `/entrada` (E) y `/salida` (S). Si está configurado `PORTON_CHANNEL_ID`, envía "E" o "S" a ese canal (PortonBot); si no, usa proxy o bus como antes.
+
+### Entidades de la base de datos
+
+- **User**: usuarios (telegram_id, username, first_name, last_name, role, created_at).
+- **Invitation**: acto de invitar (inviter, invitee, registered_at, access_type: song | gate).
+- **UserQuota**: cuotas por usuario y tipo de acción (song: song_quota/songs_used; gate: gate_expires_at).
+- **UserOperation**: registro de operaciones (gate_opened, song_generated) con fecha y opcional display_name.
+- **AccessRequest**: solicitudes de más acceso (pending/approved/denied, responded_at, responded_by).
+
+### API de consulta
+
+Endpoints GET de solo lectura: `/api/users`, `/api/invitations`, `/api/quotas`, `/api/operations`, `/api/access-requests`. Opcionalmente protegidos con `API_KEY` (header `X-Api-Key`). Ver [API.md](API.md) e importar la colección Postman/Bruno desde `docs/api/raspiHomeBot-api.postman_collection.json`.

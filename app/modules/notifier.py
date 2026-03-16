@@ -69,10 +69,11 @@ class Notifier(BaseModule):
         filename = data.get("filename", "song.mp3")
         user_id = data.get("user_id", "?")
         username = data.get("username", str(user_id))
+        display_name = data.get("display_name") or username
         prompt = data.get("prompt", "")
 
         caption = (
-            f"🎵 Canción generada por {username} (ID: {user_id})\n"
+            f"🎵 Canción generada por {display_name}\n"
             f"Estilo: {prompt[:200]}{'…' if len(prompt) > 200 else ''}\n\n"
             "Puedes guardar en servidor con el botón de abajo o con /save_song."
         )

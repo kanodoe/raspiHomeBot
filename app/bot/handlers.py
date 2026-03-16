@@ -2,6 +2,7 @@ from functools import wraps
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from app.core.config import get_invite_link_secret
 from app.core.logging import logger
 from app.database.models import UserRole
 from app.database.session import AsyncSessionLocal
@@ -25,7 +26,12 @@ def restricted(role: UserRole):
                 permission_service = PermissionService(session)
                 if not await permission_service.is_authorized(user_id, role):
                     logger.warning(f"Unauthorized access attempt by {user_id}")
-                    await update.message.reply_text("You are not authorized to use this command.")
+                    msg = getattr(update, "message", None) or getattr(update, "effective_message", None)
+                    text = "No tienes permiso para usar este comando."
+                    if msg and hasattr(msg, "reply_text"):
+                        await msg.reply_text(text)
+                    elif update.effective_chat:
+                        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
                     return
             return await func(update, context, *args, **kwargs)
         return wrapped
@@ -45,7 +51,7 @@ def restricted_to_song(func):
                 return await func(update, context, *args, **kwargs)
             if await permission_service.has_any_song_invitation(user_id):
                 await update.message.reply_text(
-                    "Has agotado tu cupo de canciones. Puedes solicitar más al administrador con /solicitar_canciones."
+                    "Has agotado tu cupo de canciones. Puedes solicitar más al administrador con /request_songs."
                 )
                 return ConversationHandler.END
         await update.message.reply_text("No tienes permiso para generar canciones.")
@@ -68,7 +74,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             decode_invite_payload,
         )
         payload = text[7:].strip()
-        secret = settings.INVITE_LINK_SECRET or settings.BOT_TOKEN
+        secret = get_invite_link_secret()
 
         # Portón: inv_gate_<token>
         if payload.startswith(INVITE_GATE_PREFIX):
@@ -76,15 +82,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data = decode_gate_payload(token, secret)
             if data and "d" in data:
                 days = data["d"]
+                user = update.effective_user
                 async with AsyncSessionLocal() as session:
                     permission_service = PermissionService(session)
                     await permission_service.create_gate_invitation(
                         inviter_id=settings.ADMIN_TELEGRAM_ID,
                         invitee_id=user_id,
-                        invitee_username=update.effective_user.username or f"User_{user_id}",
+                        invitee_username=user.username or f"User_{user_id}",
                         days=days,
+                        invitee_first_name=user.first_name,
+                        invitee_last_name=user.last_name,
                     )
-                username = (update.effective_user.username and f"@{update.effective_user.username}") or str(user_id)
+                from app.utils.user_display import format_user_display
+                display = format_user_display(
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    username=user.username,
+                    telegram_id=user_id,
+                )
                 msg_reply = (
                     f"✅ Tienes acceso al portón por {days} día(s).\n\n"
                     "Usa /gate_open cuando necesites abrir el portón. "
@@ -98,7 +113,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await context.bot.send_message(
                         chat_id=settings.ADMIN_TELEGRAM_ID,
-                        text=f"🚪 El usuario {username} (ID: {user_id}) ha usado tu enlace de portón y tiene {days} día(s) de acceso."
+                        text=f"🚪 El usuario {display} ha usado tu enlace de portón y tiene {days} día(s) de acceso."
                     )
                 except Exception as e:
                     logger.warning(f"Could not notify admin (gate link): {e}")
@@ -110,21 +125,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data = decode_invite_payload(token, secret)
             if data and "c" in data:
                 count = data["c"]
+                user = update.effective_user
                 async with AsyncSessionLocal() as session:
                     permission_service = PermissionService(session)
                     await permission_service.create_song_invitation(
                         inviter_id=settings.ADMIN_TELEGRAM_ID,
                         invitee_id=user_id,
-                        invitee_username=update.effective_user.username or f"User_{user_id}",
+                        invitee_username=user.username or f"User_{user_id}",
                         song_quota=count,
                         duration_hours=None,
+                        invitee_first_name=user.first_name,
+                        invitee_last_name=user.last_name,
                     )
-                username = (update.effective_user.username and f"@{update.effective_user.username}") or str(user_id)
+                from app.utils.user_display import format_user_display
+                display = format_user_display(
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    username=user.username,
+                    telegram_id=user_id,
+                )
                 msg_reply = (
                     f"✅ Tienes {count} canción(es) de regalo.\n\n"
                     "*Qué puedes hacer:*\n"
                     "• /generate_song — Crear una canción.\n"
-                    "• /solicitar_canciones — Pedir más canciones al administrador cuando se te acaben.\n\n"
+                    "• /request_songs — Pedir más canciones al administrador cuando se te acaben.\n\n"
+                    "⚠️ El servicio de generación _puede no estar disponible en todo momento_. Si no funciona, contacta al administrador.\n\n"
                     "No tienes acceso a otras funciones del bot (PC, portón, etc.)."
                 )
                 reply_target = getattr(update, "message", None) or getattr(update, "effective_message", None)
@@ -135,7 +160,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await context.bot.send_message(
                         chat_id=settings.ADMIN_TELEGRAM_ID,
-                        text=f"🎵 El usuario {username} (ID: {user_id}) ha usado tu enlace de invitación y tiene {count} canción(es)."
+                        text=f"🎵 El usuario {display} ha usado tu enlace de invitación y tiene {count} canción(es)."
                     )
                 except Exception as e:
                     logger.warning(f"Could not notify admin (invite link): {e}")
@@ -151,7 +176,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _reply_to_update(update, context,
             f"Bienvenido a RaspiHomeBot (administrador).\n\n"
             f"Tu Telegram ID es: `{user_id}`. Este ID debe estar en `ADMIN_TELEGRAM_ID` en el `.env`.\n\n"
-            "Puedes usar todos los comandos del bot, invitar con /invite_link o /invite_songs y ver el estado con /estado_invitaciones."
+            "Puedes usar todos los comandos del bot, invitar con /invite_link o /invite_songs y ver el estado con /invitations_status."
         )
     elif role == UserRole.USER:
         await _reply_to_update(update, context,
@@ -165,14 +190,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Eres un invitado con cupo de canciones. Te quedan *{remaining}* canción(es).\n\n"
             "*Qué puedes hacer:*\n"
             "• /generate_song — Crear una canción (usa tu cupo).\n"
-            "• /solicitar_canciones — Pedir más canciones al administrador cuando se te acaben.\n\n"
+            "• /request_songs — Pedir más canciones al administrador cuando se te acaben.\n\n"
+            "⚠️ El servicio de generación _puede no estar disponible en todo momento_. Si no funciona, contacta al administrador.\n\n"
             "No tienes acceso a otras funciones del bot (PC, portón, etc.).",
             parse_mode="Markdown"
         )
     elif role == UserRole.GUEST:
         await _reply_to_update(update, context,
             "Bienvenido.\n\n"
-            "Tenías un cupo de canciones pero ya lo has usado. Usa /solicitar_canciones para pedir más al administrador.\n\n"
+            "Tenías un cupo de canciones pero ya lo has usado. Usa /request_songs para pedir más al administrador.\n\n"
             "No tienes acceso a otras funciones del bot."
         )
     else:
@@ -247,8 +273,11 @@ def restricted_to_gate(func):
 async def gate_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from app.core.config import settings
     from app.services.gate_proxy_client import request_gate_open
+    from app.services.usage_service import UsageService
+    from app.utils.user_display import format_user_display
 
-    user_id = update.effective_user.id
+    user = update.effective_user
+    user_id = user.id
     proxy_url = getattr(settings, "GATE_PROXY_URL", None) or None
     proxy_secret = getattr(settings, "GATE_PROXY_SECRET", None) or ""
 
@@ -256,6 +285,18 @@ async def gate_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
         permission_service = PermissionService(session)
         role = await permission_service.get_user_role(user_id)
         gate_inv = await permission_service.get_gate_invitation(user_id)
+        display = format_user_display(
+            first_name=user.first_name,
+            last_name=user.last_name,
+            username=user.username,
+            telegram_id=user_id,
+        )
+        usage_service = UsageService(session)
+        await usage_service.log_operation(
+            user_id,
+            "gate_opened",
+            display_name=display,
+        )
 
     # Si es invitado de portón y está configurado el proxy, enviar la orden al otro bot
     if role == UserRole.GUEST and gate_inv and proxy_url and proxy_secret:
@@ -284,6 +325,70 @@ async def gate_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text("Opening gate... (Bus not found)")
         else:
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Opening gate... (Bus not found)")
+
+
+@restricted_to_gate
+async def gate_entrada(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Envía E (entrada) al canal PortonBot o usa proxy/bus si no hay canal configurado."""
+    from app.core.config import settings
+    from app.services.porton_channel_client import send_porton_command, get_porton_channel_id
+    from app.services.usage_service import UsageService
+    from app.utils.user_display import format_user_display
+
+    user = update.effective_user
+    user_id = user.id
+    display = format_user_display(
+        first_name=user.first_name,
+        last_name=user.last_name,
+        username=user.username,
+        telegram_id=user_id,
+    )
+    async with AsyncSessionLocal() as session:
+        usage_service = UsageService(session)
+        await usage_service.log_operation(user_id, "gate_opened", display_name=display, metadata='{"action":"entrada"}')
+    channel = get_porton_channel_id()
+    if channel:
+        ok = await send_porton_command(context.bot, "E")
+        msg = getattr(update, "message", None) or getattr(update, "effective_message", None)
+        text = "Se ha enviado la orden de entrada (E) al portón. Si el otro bot responde, te lo haré saber cuando sea posible." if ok else "No se pudo enviar la orden al canal del portón. Intenta más tarde."
+        if msg:
+            await msg.reply_text(text)
+        else:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+        return
+    await gate_open(update, context)
+
+
+@restricted_to_gate
+async def gate_salida(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Envía S (salida) al canal PortonBot o abre igual que gate_open si no hay canal."""
+    from app.services.porton_channel_client import send_porton_command, get_porton_channel_id
+    from app.services.usage_service import UsageService
+    from app.utils.user_display import format_user_display
+
+    user = update.effective_user
+    user_id = user.id
+    display = format_user_display(
+        first_name=user.first_name,
+        last_name=user.last_name,
+        username=user.username,
+        telegram_id=user_id,
+    )
+    async with AsyncSessionLocal() as session:
+        usage_service = UsageService(session)
+        await usage_service.log_operation(user_id, "gate_opened", display_name=display, metadata='{"action":"salida"}')
+    channel = get_porton_channel_id()
+    if channel:
+        ok = await send_porton_command(context.bot, "S")
+        msg = getattr(update, "message", None) or getattr(update, "effective_message", None)
+        text = "Se ha enviado la orden de salida (S) al portón. Si el otro bot responde, te lo haré saber cuando sea posible." if ok else "No se pudo enviar la orden al canal del portón. Intenta más tarde."
+        if msg:
+            await msg.reply_text(text)
+        else:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+        return
+    await gate_open(update, context)
+
 
 @restricted(UserRole.ADMIN)
 async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -348,15 +453,17 @@ async def invite_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await _reply_to_update(update, context, "Indica un número válido de canciones.")
         return
-    secret = settings.INVITE_LINK_SECRET or settings.BOT_TOKEN
+    secret = get_invite_link_secret()
     token = encode_invite_payload(count, secret)
     if not token:
         await _reply_to_update(update, context, "Error al generar el enlace (falta instalar 'cryptography').")
         return
-    me = await context.bot.get_me()
-    bot_username = me.username if me else None
+    bot_username = getattr(settings, "SONGS_BOT_USERNAME", None) or None
     if not bot_username:
-        await _reply_to_update(update, context, "No se pudo obtener el nombre del bot.")
+        me = await context.bot.get_me()
+        bot_username = me.username if me else None
+    if not bot_username:
+        await _reply_to_update(update, context, "No se pudo obtener el nombre del bot de canciones (configura SONGS_BOT_USERNAME o usa este bot).")
         return
     link = f"https://t.me/{bot_username}?start={INVITE_PREFIX}{token}"
     admin_chat_id = update.effective_user.id
@@ -376,13 +483,13 @@ async def invite_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted(UserRole.ADMIN)
 async def invite_link_gate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Genera un enlace de invitación al portón (días); el bot te lo envía por mensaje privado. Uso: /invite_link_gate <días>"""
+    """Genera un enlace de invitación al portón (días); el bot te lo envía por mensaje privado. Uso: /gate_invite_link <días>"""
     from app.core.config import settings
     from app.utils.invite_link import INVITE_GATE_PREFIX, encode_gate_payload
 
     args = context.args
     if len(args) < 1:
-        await _reply_to_update(update, context, "Uso: /invite_link_gate <días>\nEj: /invite_link_gate 7 — te enviaré un enlace por privado; quien lo abra tendrá acceso al portón esos días.")
+        await _reply_to_update(update, context, "Uso: /gate_invite_link <días>\nEj: /gate_invite_link 7 — te enviaré un enlace por privado; quien lo abra tendrá acceso al portón esos días.")
         return
     try:
         days = int(args[0])
@@ -392,15 +499,17 @@ async def invite_link_gate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await _reply_to_update(update, context, "Indica un número válido de días.")
         return
-    secret = settings.INVITE_LINK_SECRET or settings.BOT_TOKEN
+    secret = get_invite_link_secret()
     token = encode_gate_payload(days, secret)
     if not token:
         await _reply_to_update(update, context, "Error al generar el enlace (falta instalar 'cryptography').")
         return
-    me = await context.bot.get_me()
-    bot_username = me.username if me else None
+    bot_username = getattr(settings, "GATE_BOT_USERNAME", None) or None
     if not bot_username:
-        await _reply_to_update(update, context, "No se pudo obtener el nombre del bot.")
+        me = await context.bot.get_me()
+        bot_username = me.username if me else None
+    if not bot_username:
+        await _reply_to_update(update, context, "No se pudo obtener el nombre del bot de portón (configura GATE_BOT_USERNAME o usa este bot).")
         return
     link = f"https://t.me/{bot_username}?start={INVITE_GATE_PREFIX}{token}"
     admin_chat_id = update.effective_user.id
@@ -420,10 +529,10 @@ async def invite_link_gate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted(UserRole.ADMIN)
 async def invite_gate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Invitación al portón por user_id y días: /invite_gate <user_id> <días>"""
+    """Invitación al portón por user_id y días: /gate_invite <user_id> <días>"""
     args = context.args
     if len(args) < 2:
-        await _reply_to_update(update, context, "Uso: /invite_gate <user_id> <días>\nEj: /invite_gate 123456 7")
+        await _reply_to_update(update, context, "Uso: /gate_invite <user_id> <días>\nEj: /gate_invite 123456 7")
         return
     try:
         invitee_id = int(args[0])
@@ -441,7 +550,7 @@ async def invite_gate(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         await _reply_to_update(update, context, f"Invitación al portón creada: usuario {invitee_id} tiene acceso durante {days} día(s).")
     except (ValueError, IndexError):
-        await _reply_to_update(update, context, "Argumentos inválidos. Uso: /invite_gate <user_id> <días>")
+        await _reply_to_update(update, context, "Argumentos inválidos. Uso: /gate_invite <user_id> <días>")
 
 
 @restricted(UserRole.ADMIN)
@@ -482,22 +591,31 @@ async def invite_songs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def solicitar_canciones(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """El invitado solicita más cupo de canciones; se notifica al admin."""
+    """El invitado solicita más cupo de canciones; se registra AccessRequest y se notifica al admin."""
     from app.core.config import settings
-    user_id = update.effective_user.id
-    username = (update.effective_user.username or "") and f"@{update.effective_user.username}" or str(user_id)
+    from app.services.usage_service import UsageService
+    from app.utils.user_display import format_user_display
+
+    user = update.effective_user
+    user_id = user.id
+    display = format_user_display(
+        first_name=user.first_name,
+        last_name=user.last_name,
+        username=user.username,
+        telegram_id=user_id,
+    )
     async with AsyncSessionLocal() as session:
         permission_service = PermissionService(session)
         if not await permission_service.has_any_song_invitation(user_id):
-            await update.message.reply_text("Solo los invitados con cupo de canciones pueden usar este comando para solicitar más.")
+            await _reply_to_update(update, context, "Solo los invitados con cupo de canciones pueden usar este comando para solicitar más.")
             return
-    await update.message.reply_text(
-        "Se ha notificado al administrador. Cuando te autorice más canciones podrás seguir generando."
-    )
+        usage_service = UsageService(session)
+        await usage_service.create_access_request(user_id, "more_songs", requested_value="+N")
+    await _reply_to_update(update, context, "Se ha notificado al administrador. Cuando te autorice más canciones podrás seguir generando.")
     try:
         await context.bot.send_message(
             chat_id=settings.ADMIN_TELEGRAM_ID,
-            text=f"🎵 Solicitud de más canciones: {username} (ID: {user_id}). "
+            text=f"🎵 Solicitud de más canciones: {display}. "
             "Para darle más cupo: /grant_songs <user_id> <cantidad>\nEj: /grant_songs " + str(user_id) + " 5"
         )
     except Exception as e:
@@ -506,7 +624,10 @@ async def solicitar_canciones(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 @restricted(UserRole.ADMIN)
 async def grant_songs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Añade cupo de canciones a un usuario: /grant_songs <user_id> <cantidad>"""
+    """Añade cupo de canciones a un usuario y resuelve solicitud pendiente si existe."""
+    from app.services.usage_service import UsageService
+    from app.database.models import AccessRequestStatus
+
     args = context.args
     if len(args) < 2:
         await update.message.reply_text("Uso: /grant_songs <user_id> <cantidad>\nEj: /grant_songs 123456 5")
@@ -517,14 +638,24 @@ async def grant_songs(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if count < 1:
             await update.message.reply_text("La cantidad debe ser al menos 1.")
             return
+        admin_id = update.effective_user.id
         async with AsyncSessionLocal() as session:
             permission_service = PermissionService(session)
             await permission_service.add_song_quota(
-                admin_id=update.effective_user.id,
+                admin_id=admin_id,
                 invitee_telegram_id=invitee_id,
                 count=count,
                 invitee_username=None,
             )
+            usage_service = UsageService(session)
+            pending = await usage_service.list_access_requests(status=AccessRequestStatus.PENDING.value, telegram_id=invitee_id, limit=1)
+            if pending:
+                await usage_service.resolve_access_request(
+                    pending[0].id,
+                    AccessRequestStatus.APPROVED.value,
+                    responded_by=admin_id,
+                    notes=f"+{count} canciones",
+                )
         await update.message.reply_text(f"Se han añadido {count} canciones al usuario {invitee_id}.")
     except (ValueError, IndexError):
         await update.message.reply_text("Argumentos inválidos. Uso: /grant_songs <user_id> <cantidad>")
@@ -537,20 +668,20 @@ async def estado_invitaciones(update: Update, context: ContextTypes.DEFAULT_TYPE
         permission_service = PermissionService(session)
         rows = await permission_service.list_song_invitations()
     if not rows:
-        await update.message.reply_text("No hay invitaciones activas por cupo de canciones.")
+        await _reply_to_update(update, context, "No hay invitaciones activas por cupo de canciones.")
         return
-    from datetime import datetime as dt
     lines = ["📋 *Estado de invitaciones (canciones)*\n"]
     for r in rows:
         exp = r["expiration_time"].strftime("%Y-%m-%d %H:%M") if hasattr(r["expiration_time"], "strftime") else str(r["expiration_time"])
         first = ""
         if r.get("first_used_at"):
             first = f" · Primera vez: {r['first_used_at'].strftime('%Y-%m-%d %H:%M')}" if hasattr(r["first_used_at"], "strftime") else ""
+        display = r.get("display_name") or r.get("invitee_username") or f"ID {r['invitee_telegram_id']}"
         lines.append(
-            f"• {r['invitee_username']} (ID: {r['invitee_telegram_id']})\n"
+            f"• {display}\n"
             f"  Generadas: {r['songs_used']}/{r['song_quota']} · Quedan: {r['remaining']} · Expira: {exp}{first}"
         )
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await _reply_to_update(update, context, "\n".join(lines), parse_mode="Markdown")
 
 
 @restricted(UserRole.USER)
@@ -611,13 +742,20 @@ async def generate_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     is_song_guest = role == UserRole.GUEST
 
     if is_song_guest:
+        from app.utils.user_display import format_user_display
+        display = format_user_display(
+            first_name=update.effective_user.first_name,
+            last_name=update.effective_user.last_name,
+            username=update.effective_user.username,
+            telegram_id=user_id,
+        )
         async with AsyncSessionLocal() as session:
             perm2 = PermissionService(session)
             if await perm2.mark_invitation_first_used(user_id):
                 try:
                     await context.bot.send_message(
                         chat_id=settings.ADMIN_TELEGRAM_ID,
-                        text=f"🎵 El usuario {username} (ID: {user_id}) ha empezado a usar su invitación por primera vez (aceptación)."
+                        text=f"🎵 {display} ha empezado a usar su invitación por primera vez (aceptación)."
                     )
                 except Exception as e:
                     logger.warning(f"Could not notify admin (first use): {e}")
@@ -625,12 +763,19 @@ async def generate_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not api_ready:
             await update.message.reply_text(
                 "En este momento el servicio de generación no está disponible. "
-                "Debes esperar a que se inicie; se ha notificado al administrador."
+                "Si el problema continúa, contacta al administrador. Se le ha notificado."
+            )
+            from app.utils.user_display import format_user_display
+            display = format_user_display(
+                first_name=update.effective_user.first_name,
+                last_name=update.effective_user.last_name,
+                username=update.effective_user.username,
+                telegram_id=user_id,
             )
             try:
                 await context.bot.send_message(
                     chat_id=settings.ADMIN_TELEGRAM_ID,
-                    text=f"🎵 El usuario {username} (ID: {user_id}) quiere generar una canción pero el servicio no está activo. "
+                    text=f"🎵 {display} quiere generar una canción pero el servicio no está activo. "
                     "Puedes iniciarlo con /acestep_start y, si usan IA, /ollama_start."
                 )
             except Exception as e:
@@ -875,6 +1020,13 @@ async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYP
     if bus:
         user_id = update.effective_user.id
         username = (update.effective_user.username or "") and f"@{update.effective_user.username}" or str(user_id)
+        from app.utils.user_display import format_user_display
+        display = format_user_display(
+            first_name=update.effective_user.first_name,
+            last_name=update.effective_user.last_name,
+            username=update.effective_user.username,
+            telegram_id=user_id,
+        )
         await bus.publish("command", {
             "command": "acestep_generate",
             "source": f"chat_{update.effective_chat.id}",
@@ -882,11 +1034,19 @@ async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYP
             "lyrics": lyrics or "",
             "user_id": user_id,
             "username": username,
+            "display_name": display,
         })
         async with AsyncSessionLocal() as session:
             permission_service = PermissionService(session)
             if await permission_service.get_user_role(user_id) == UserRole.GUEST:
                 if await permission_service.consume_song_quota(user_id):
+                    from app.services.usage_service import UsageService
+                    usage_service = UsageService(session)
+                    await usage_service.log_operation(
+                        user_id,
+                        "song_generated",
+                        display_name=display,
+                    )
                     remaining = await permission_service.get_remaining_songs(user_id)
                     if remaining is not None:
                         await update.message.reply_text(f"Te quedan {remaining} canciones en tu cupo.")

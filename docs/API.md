@@ -1,0 +1,44 @@
+# API de RaspiHomeBot
+
+## Base URL
+
+Por defecto el servicio expone la API en `http://localhost:8000`. En producción usa la URL de tu servidor.
+
+## Autenticación (opcional)
+
+Si en `.env` defines `API_KEY`, los endpoints de consulta de la base de datos requieren el header:
+
+- **X-Api-Key**: valor de `API_KEY`
+
+Si no defines `API_KEY`, los endpoints de consulta no exigen autenticación (solo accesibles en la red donde corre el servicio).
+
+## Endpoints de consulta (solo lectura)
+
+Todos bajo el prefijo `/api`, método GET.
+
+| Endpoint | Descripción | Query params (opcionales) |
+|----------|-------------|----------------------------|
+| `GET /api/users` | Lista usuarios | `telegram_id`, `role`, `limit`, `offset` |
+| `GET /api/users/{telegram_id}` | Detalle de un usuario | — |
+| `GET /api/invitations` | Lista invitaciones | `access_type`, `invitee_telegram_id`, `expired`, `limit`, `offset` |
+| `GET /api/quotas` | Lista cuotas por usuario/acción | `telegram_id`, `access_type`, `limit`, `offset` |
+| `GET /api/operations` | Lista operaciones (gate_opened, song_generated) | `telegram_id`, `operation_type`, `since`, `until`, `limit`, `offset` |
+| `GET /api/access-requests` | Lista solicitudes de más acceso | `status`, `telegram_id`, `limit`, `offset` |
+
+## Colección Postman / Bruno
+
+En `docs/api/raspiHomeBot-api.postman_collection.json` tienes una colección Postman v2.1 con todas las peticiones de consulta.
+
+### Cómo importar
+
+1. **Postman**: File → Import → sube el archivo `raspiHomeBot-api.postman_collection.json`. Ajusta las variables de colección `base_url` (p. ej. `http://localhost:8000`) y, si usas API key, `api_key`.
+2. **Bruno**: File → Import → Postman → selecciona el mismo JSON. Configura `base_url` y `api_key` en las variables de la colección.
+
+### Variables de colección
+
+- **base_url**: URL base del servicio (p. ej. `http://localhost:8000`).
+- **api_key**: Si está definido `API_KEY` en el servidor, pon aquí el mismo valor y activa el header `X-Api-Key` en cada request (en la colección viene desactivado por defecto para entornos sin API key).
+
+## Otros endpoints
+
+- `POST /api/gate/open`: proxy del portón. Requiere body `{"secret": "GATE_PROXY_SECRET"}` o header `Authorization: Bearer <GATE_PROXY_SECRET>`. Solo tiene sentido cuando el proceso corre en modo admin y está configurado `GATE_PROXY_SECRET`.

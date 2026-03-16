@@ -104,14 +104,15 @@ class AceStepController(BaseModule):
                 await self.bus.publish("notify.status", {"message": "✅ API de ACE-Step iniciada. Enviando tarea...", "source": source})
             else:
                 msg = error_msg or "No se pudo iniciar la API de ACE-Step. Abortando generación."
-                await self.bus.publish("notify.error", {"message": f"❌ {msg}", "source": source})
+                await self.bus.publish("notify.error", {"message": f"❌ {msg} Si el servicio no está disponible, contacta al administrador.", "source": source})
                 return
 
         task_id = await AceStepService.generate_song(prompt, lyrics)
         if not task_id:
-            await self.bus.publish("notify.error", {"message": "Error al enviar la tarea de generación.", "source": source})
+            await self.bus.publish("notify.error", {"message": "Error al enviar la tarea de generación. Si el servicio no está disponible, contacta al administrador.", "source": source})
             return
 
+        display_name = data.get("display_name") or username
         await self.bus.publish("notify.status", {"message": f"Tarea de generación enviada (ID: {task_id}). Procesando...", "source": source})
         
         # Poll for completion
@@ -149,6 +150,7 @@ class AceStepController(BaseModule):
                             "filename": f"song_{task_id}.mp3",
                             "user_id": user_id,
                             "username": username,
+                            "display_name": display_name,
                             "prompt": prompt,
                             "lyrics": lyrics,
                         })
@@ -157,7 +159,7 @@ class AceStepController(BaseModule):
                 return
             elif status == "failed":
                 error_msg = status_data.get("error", "Error desconocido")
-                await self.bus.publish("notify.error", {"message": f"Error en la generación: {error_msg}", "source": source})
+                await self.bus.publish("notify.error", {"message": f"Error en la generación: {error_msg} Si el servicio no está disponible, contacta al administrador.", "source": source})
                 return
         
     async def _handle_save(self, data: Dict[str, Any]):

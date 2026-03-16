@@ -18,7 +18,28 @@ def _add_invitation_song_columns(conn):
         try:
             conn.execute(text(f"ALTER TABLE invitations ADD COLUMN {col} {spec}"))
         except Exception:
-            pass  # Columna ya existe
+            pass
+
+
+def _add_user_and_invitation_columns(conn):
+    """Añade columnas nuevas a users e invitations (migración SQLite)."""
+    for table, cols in [
+        ("users", [("first_name", "VARCHAR(255)"), ("last_name", "VARCHAR(255)")]),
+        (
+            "invitations",
+            [
+                ("registered_at", "DATETIME"),
+                ("invitee_first_name", "VARCHAR(255)"),
+                ("invitee_last_name", "VARCHAR(255)"),
+                ("access_type", "VARCHAR(50)"),
+            ],
+        ),
+    ]:
+        for col, spec in cols:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {spec}"))
+            except Exception:
+                pass
 
 
 async def init_db():
@@ -26,6 +47,7 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
         if "sqlite" in (settings.DATABASE_URL or ""):
             await conn.run_sync(_add_invitation_song_columns)
+            await conn.run_sync(_add_user_and_invitation_columns)
 
 async def get_db():
     async with AsyncSessionLocal() as session:
