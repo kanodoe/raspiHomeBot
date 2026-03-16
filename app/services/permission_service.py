@@ -42,7 +42,11 @@ class PermissionService:
             UserRole.GUEST: 1
         }
         
-        # Special check for invitation guests
+        current_priority = role_priority.get(role, 0)
+        required_priority = role_priority.get(required_role, 0)
+
+        # Special check for invitation guests: 
+        # Only GUESTs with an active invitation are allowed to perform GUEST-level actions
         if role == UserRole.GUEST:
             stmt = select(Invitation).where(
                 Invitation.invitee_telegram_id == telegram_id,
@@ -50,12 +54,10 @@ class PermissionService:
             )
             result = await self.db.execute(stmt)
             if not result.scalar_one_or_none():
-                 # No active invitation, guest but unauthorized for gated commands
-                 # Actually, we should check if they are in the 'users' table as guest
-                 # If they are just some random user, they have no role.
-                 pass
+                 # No active invitation, guest is not authorized for any gated commands
+                 return False
 
-        return role_priority.get(role, 0) >= role_priority.get(required_role, 0)
+        return current_priority >= required_priority
 
     async def create_invitation(self, inviter_id: int, invitee_id: int, invitee_username: str, duration_hours: int):
         expiration = datetime.utcnow() + timedelta(hours=duration_hours)

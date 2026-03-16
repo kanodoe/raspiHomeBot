@@ -25,6 +25,14 @@ def restricted(role: UserRole):
         return wrapped
     return decorator
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    logger.info(f"Start command received from {user_id}")
+    await update.message.reply_text(
+        f"Bienvenido a RaspiHomeBot.\nTu Telegram ID es: `{user_id}`\n"
+        f"Asegúrate de que este ID esté configurado como `ADMIN_TELEGRAM_ID` en tu archivo `.env`."
+    )
+
 @restricted(UserRole.USER)
 async def pc_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bus = context.bot_data.get("bus")

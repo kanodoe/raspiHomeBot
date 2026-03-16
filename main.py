@@ -10,7 +10,7 @@ from app.core.event_bus import EventBus
 from app.api.routes import router as api_router
 from app.database.session import init_db, AsyncSessionLocal
 from app.services.permission_service import PermissionService
-from app.bot.handlers import pc_on, pc_off, pc_status, status_summary, gate_open, invite
+from app.bot.handlers import pc_on, pc_off, pc_status, status_summary, gate_open, invite, start
 
 # Modules
 from app.modules.command_router import CommandRouter
@@ -27,6 +27,7 @@ from app.modules.permission_controller import PermissionController
 def setup_bot():
     application = ApplicationBuilder().token(settings.BOT_TOKEN).build()
     
+    application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("pc_on", pc_on))
     application.add_handler(CommandHandler("pc_off", pc_off))
     application.add_handler(CommandHandler("pc_status", pc_status))
