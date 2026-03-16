@@ -3,6 +3,7 @@ import os
 import subprocess
 import httpx
 import json
+import base64
 import urllib.parse
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -265,18 +266,76 @@ class AceStepService:
     @classmethod
     async def save_song_locally(cls, task_id: str, audio_bytes: bytes, metadata: Dict[str, Any]) -> bool:
         """
-        Saves audio and metadata JSON of the song to the configured path.
+        Saves audio and metadata JSON of the song.
+        Requirement: Save on the computer where ACE runs, in C:\telegram_songs.
         """
+        target_dir = settings.ACESTEP_SAVE_PATH
+        # Ensure target_dir is a Windows-style path for consistency if needed
+        if os.name != 'nt' and not (":" in target_dir or target_dir.startswith("\\")):
+            # If we're on Linux (Docker) and the path is not Windows-like, we assume the user 
+            # wants the default Windows path for ACE
+            target_dir = r"C:\telegram_songs"
+
+        audio_path = metadata.get("audio_path")
+        
+        # Determine if we should use SSH or local filesystem
+        # If we are on POSIX (Docker/Raspi) and target is a Windows path, use SSH
+        use_ssh = os.name != 'nt' and (":" in target_dir or target_dir.startswith("\\"))
+        
+        if use_ssh:
+            from app.utils.ssh import run_ssh_command
+            
+            ssh_host = settings.ACESTEP_HOST
+            if ssh_host in ("localhost", "127.0.0.1", "0.0.0.0"):
+                ssh_host = settings.PC_IP
+                
+            logger.info(f"Saving song {task_id} remotely on {ssh_host} in {target_dir}")
+            
+            json_content = json.dumps(metadata, indent=4, ensure_ascii=False)
+            b64_json = base64.b64encode(json_content.encode('utf-8')).decode('utf-8')
+            
+            target_audio = f"{target_dir}\\song_{task_id}.mp3"
+            target_json = f"{target_dir}\\song_{task_id}.json"
+            
+            # If we have the audio_path from metadata, we can copy it on the remote host
+            # instead of re-uploading the bytes we just downloaded.
+            copy_cmd = ""
+            if audio_path:
+                copy_cmd = f"Copy-Item -Path '{audio_path}' -Destination '{target_audio}' -Force;"
+            else:
+                logger.warning(f"audio_path missing in metadata for task {task_id}, cannot copy file on remote host via SSH.")
+                # We could try to write the bytes over SSH but it's complex for binary.
+                # Since the API is on the same machine, the path should normally be available.
+                return False
+
+            ps_cmd = (
+                f"powershell -Command \""
+                f"if (!(Test-Path '{target_dir}')) {{ New-Item -ItemType Directory -Force -Path '{target_dir}' }}; "
+                f"{copy_cmd} "
+                f"[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{b64_json}')) | Out-File -FilePath '{target_json}' -Encoding utf8"
+                f"\""
+            )
+            
+            return await run_ssh_command(ps_cmd, ssh_host)
+        
+        # Local saving (bot and ACE on the same machine or local path configured)
         try:
-            save_dir = Path(settings.ACESTEP_SAVE_PATH)
+            # For local Windows, ensure we use the Path object correctly
+            save_dir = Path(target_dir)
             if not save_dir.exists():
                 save_dir.mkdir(parents=True, exist_ok=True)
             
             audio_file = save_dir / f"song_{task_id}.mp3"
             json_file = save_dir / f"song_{task_id}.json"
             
-            with open(audio_file, "wb") as f:
-                f.write(audio_bytes)
+            # If we are on Windows and have the audio_path, we can copy instead of writing bytes
+            if os.name == 'nt' and audio_path and Path(audio_path).exists():
+                import shutil
+                shutil.copy(audio_path, audio_file)
+                logger.info(f"Copied audio file from {audio_path} to {audio_file}")
+            else:
+                with open(audio_file, "wb") as f:
+                    f.write(audio_bytes)
             
             with open(json_file, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=4, ensure_ascii=False)

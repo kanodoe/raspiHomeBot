@@ -10,7 +10,7 @@ class AceStepController(BaseModule):
     """
     Module to manage ACE-Step API, Ollama and song generation.
     """
-    __slots__ = ()
+    __slots__ = ("last_generated_songs",)
 
     def __init__(self, bus):
         super().__init__(bus)

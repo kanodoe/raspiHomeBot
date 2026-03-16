@@ -25,7 +25,7 @@ class AppSettings(BaseSettings):
     ACESTEP_PATH: str = r"C:\path\to\ACE-Step-1.5"
     ACESTEP_HOST: str = "127.0.0.1"
     ACESTEP_PORT: int = 8001
-    ACESTEP_SAVE_PATH: str = r"C:\Users\KanoDoe\PycharmProjects\RaspiHomeBot\saved_songs"
+    ACESTEP_SAVE_PATH: str = r"C:\telegram_songs"
 
     # Ollama Settings
     OLLAMA_BASE_URL: str = "http://localhost:11434"

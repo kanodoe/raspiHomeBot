@@ -1,0 +1,19 @@
+2026-03-16 00:27:14,043 - home_bot - INFO - Initializing database...
+2026-03-16 00:27:14,092 - home_bot - INFO - StateStore module initialized.
+2026-03-16 00:27:14,092 - home_bot - INFO - CommandRouter module initialized.
+2026-03-16 00:27:14,092 - home_bot - INFO - Notifier module initialized.
+2026-03-16 00:27:14,092 - home_bot - INFO - ZigbeeAdapter module initialized.
+2026-03-16 00:27:14,092 - home_bot - INFO - ArloAdapter module initialized.
+2026-03-16 00:27:14,093 - home_bot - INFO - SchedulerModule module initialized.
+2026-03-16 00:27:14,093 - home_bot - INFO - PCController module initialized.
+2026-03-16 00:27:14,093 - home_bot - INFO - GateController module initialized.
+2026-03-16 00:27:14,093 - home_bot - INFO - PermissionController module initialized.
+2026-03-16 00:27:14,093 - home_bot - INFO - AceStepController module initialized.
+2026-03-16 00:27:14,093 - home_bot - INFO - Starting Telegram bot...
+2026-03-16 00:27:14,421 - home_bot - INFO - PermissionController: Running invitation cleanup...
+2026-03-16 00:27:14,427 - home_bot - INFO - PermissionController: Invitation cleanup complete.
+2026-03-16 00:27:15,171 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8474118402:AAGPeuELBbglxGCSuW4Si00yEugqL0FGhgw/getMe "HTTP/1.1 200 OK"
+2026-03-16 00:27:15,548 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8474118402:AAGPeuELBbglxGCSuW4Si00yEugqL0FGhgw/setMyCommands "HTTP/1.1 200 OK"
+2026-03-16 00:27:15,549 - home_bot - INFO - Telegram bot commands registered in API.
+2026-03-16 00:27:15,549 - telegram.ext.Application - INFO - Application started
+2026-03-16 00:27:15,808 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8474118402:AAGPeuELBbglxGCSuW4Si00yEugqL0FGhgw/deleteWebhook "HTTP/1.1 200 OK"
