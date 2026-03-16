@@ -21,6 +21,15 @@ class AppSettings(BaseSettings):
     ADMIN_TELEGRAM_ID: int
     DATABASE_URL: str = "sqlite+aiosqlite:///./home_automation.db"
 
+    # ACE-Step Settings
+    ACESTEP_PATH: str = r"C:\path\to\ACE-Step-1.5"
+    ACESTEP_HOST: str = "127.0.0.1"
+    ACESTEP_PORT: int = 8001
+
+    # Ollama Settings
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3" # Default to llama3, user can change in .env
+
     # From config.yaml (default values or loaded later)
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/home_bot.log"

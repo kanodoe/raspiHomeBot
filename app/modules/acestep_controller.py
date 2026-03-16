@@ -1,0 +1,111 @@
+from typing import Any, Dict
+from app.core.module import BaseModule
+from app.core.logging import logger
+from app.services.acestep_service import AceStepService
+from app.services.ollama_service import OllamaService
+import asyncio
+import io
+
+class AceStepController(BaseModule):
+    """
+    Module to manage ACE-Step API, Ollama and song generation.
+    """
+    __slots__ = ()
+
+    def __init__(self, bus):
+        super().__init__(bus)
+
+    async def start(self):
+        self.bus.subscribe("cmd.acestep.start", self._handle_start)
+        self.bus.subscribe("cmd.acestep.stop", self._handle_stop)
+        self.bus.subscribe("cmd.ollama.start", self._handle_ollama_start)
+        self.bus.subscribe("cmd.ollama.stop", self._handle_ollama_stop)
+        self.bus.subscribe("cmd.acestep.generate", self._handle_generate)
+        logger.info("AceStepController module initialized.")
+
+    async def _handle_start(self, data: Dict[str, Any]):
+        source = data.get("source")
+        logger.info(f"AceStepController: Starting ACE-Step API (source: {source})")
+        
+        success = await AceStepService.start_api()
+        if success:
+            await self.bus.publish("notify.status", {"message": "ACE-Step API iniciada correctamente.", "source": source})
+        else:
+            await self.bus.publish("notify.error", {"message": "Error al iniciar la API de ACE-Step.", "source": source})
+
+    async def _handle_stop(self, data: Dict[str, Any]):
+        source = data.get("source")
+        logger.info(f"AceStepController: Stopping ACE-Step API (source: {source})")
+        
+        success = await AceStepService.stop_api()
+        if success:
+            await self.bus.publish("notify.status", {"message": "ACE-Step API detenida.", "source": source})
+        else:
+            await self.bus.publish("notify.error", {"message": "Error al detener la API de ACE-Step.", "source": source})
+
+    async def _handle_ollama_start(self, data: Dict[str, Any]):
+        source = data.get("source")
+        logger.info(f"AceStepController: Starting Ollama (source: {source})")
+        
+        success = await OllamaService.start_ollama()
+        if success:
+            await self.bus.publish("notify.status", {"message": "Ollama iniciado correctamente.", "source": source})
+        else:
+            await self.bus.publish("notify.error", {"message": "Error al iniciar Ollama. Asegúrate de que esté en el PATH.", "source": source})
+
+    async def _handle_ollama_stop(self, data: Dict[str, Any]):
+        source = data.get("source")
+        logger.info(f"AceStepController: Stopping Ollama (source: {source})")
+        
+        success = await OllamaService.stop_ollama()
+        if success:
+            await self.bus.publish("notify.status", {"message": "Ollama detenido (si fue iniciado por el bot).", "source": source})
+        else:
+            await self.bus.publish("notify.error", {"message": "No se pudo detener Ollama. Puede que se iniciara externamente.", "source": source})
+
+    async def _handle_generate(self, data: Dict[str, Any]):
+        source = data.get("source")
+        prompt = data.get("prompt")
+        lyrics = data.get("lyrics", "")
+        
+        logger.info(f"AceStepController: Generating song (source: {source}, prompt: {prompt})")
+        
+        task_id = await AceStepService.generate_song(prompt, lyrics)
+        if not task_id:
+            await self.bus.publish("notify.error", {"message": "Error al enviar la tarea de generación.", "source": source})
+            return
+
+        await self.bus.publish("notify.status", {"message": f"Tarea de generación enviada (ID: {task_id}). Procesando...", "source": source})
+        
+        # Poll for completion
+        max_attempts = 60 # 5 minutes approx with 5s sleep
+        for _ in range(max_attempts):
+            await asyncio.sleep(5)
+            status_data = await AceStepService.get_task_status(task_id)
+            if not status_data:
+                continue
+            
+            status = status_data.get("status")
+            if status == "completed":
+                audio_path = status_data.get("audio_path")
+                if audio_path:
+                    audio_bytes = await AceStepService.download_audio(audio_path)
+                    if audio_bytes:
+                        # We need a way to send the audio file back. 
+                        # Notifier currently only supports text.
+                        # Let's publish a special event for audio.
+                        await self.bus.publish("notify.audio", {
+                            "audio": audio_bytes, 
+                            "filename": f"song_{task_id}.mp3", 
+                            "source": source,
+                            "caption": f"¡Aquí tienes tu canción!\nEstilo: {prompt}"
+                        })
+                        return
+                await self.bus.publish("notify.error", {"message": "Canción generada pero no se pudo obtener el audio.", "source": source})
+                return
+            elif status == "failed":
+                error_msg = status_data.get("error", "Error desconocido")
+                await self.bus.publish("notify.error", {"message": f"Error en la generación: {error_msg}", "source": source})
+                return
+        
+        await self.bus.publish("notify.error", {"message": "La generación de la canción ha tardado demasiado.", "source": source})

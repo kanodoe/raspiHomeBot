@@ -13,10 +13,14 @@ A production-ready home automation system for Raspberry Pi, controlled via Teleg
     - `Notifier`: Centralized notification system.
     - `StateStore`: Consistent state across all modules.
     - `PCController`: WOL and SSH shutdown management.
-    - `GateController`: Gate simulation logic.
+    - `PermissionController`: RBAC and temporary access control.
+    - `AceStepController`: Management of ACE-Step API and song generation process.
 - **Wake-on-LAN (WOL)**: Turn on your PC remotely.
 - **SSH Shutdown**: Safely turn off your PC via SSH.
-- **Telegram Bot**: Command-based interaction with RBAC.
+- **Telegram Bot**: Command-based interaction with RBAC and interactive AI flows.
+- **AI Integration**:
+    - **Ollama**: Local AI for style and lyrics suggestions.
+    - **ACE-Step 1.5**: Music generation API integration.
 - **REST API**: Minimal FastAPI endpoints.
 - **Lightweight**: Optimized for Raspberry Pi (< 50MB RAM).
     - Uses `__slots__` for all core classes and modules to reduce object memory footprint.
@@ -88,6 +92,45 @@ graph TD
 - `/status`: Get a summary of the system state.
 - `/gate_open`: Open the gate (available for guests).
 - `/invite <user_id> <hours>h`: (Admin only) Grant temporary access to another user.
+- `/acestep_start`: Start the ACE-Step API on the host machine.
+- `/acestep_stop`: Stop the ACE-Step API.
+- `/ollama_start`: Start the Ollama server (requires `ollama` in PATH).
+- `/ollama_stop`: Stop the Ollama server (if started by the bot).
+- `/generate_song`: Interactive flow to create a song (Manual or AI-assisted).
+
+## AI & Generation Services
+
+El bot permite generar música utilizando **ACE-Step 1.5** y asistir en la creación de letras y estilos mediante **Ollama**. Ambas APIs pueden ser controladas directamente desde el bot.
+
+### Requisitos
+- **ACE-Step 1.5** instalado en el host. La ruta se configura en el archivo `.env`.
+- **Ollama** instalado en el host y disponible en el PATH del sistema.
+
+### Configuración (.env)
+Asegúrate de configurar correctamente las rutas y puertos en tu archivo `.env`:
+```env
+# ACE-Step
+ACESTEP_PATH=C:\ruta\al\directorio\ACE-Step-1.5
+ACESTEP_HOST=127.0.0.1
+ACESTEP_PORT=8001
+
+# Ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3
+```
+
+### Gestión de Servicios
+Si los servicios no están corriendo por defecto, puedes levantarlos usando los comandos:
+- `/acestep_start`: Ejecuta el archivo `.bat` de la API de ACE-Step.
+- `/ollama_start`: Ejecuta `ollama serve` para levantar el servidor de IA local.
+
+### Flujo de Generación de Canción
+1. Ejecuta `/generate_song`.
+2. Selecciona **Asistido por IA**. Si Ollama no está activo, el bot te avisará y podrás usar el modo manual o intentar levantarlo con `/ollama_start`.
+3. Describe el tema (ej: "Una canción de rock sobre un robot que quiere ser humano").
+4. Ollama generará una propuesta de **Estilo** y **Letra**.
+5. Puedes **Aceptar**, **Refinar** (pedir cambios específicos) o **Regenerar**.
+6. Una vez aceptado, se envía a ACE-Step. El bot te notificará cuando el audio esté listo y te lo enviará directamente.
 
 ## CLI Simulator
 

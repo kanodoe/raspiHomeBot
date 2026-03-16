@@ -17,6 +17,7 @@ class Notifier(BaseModule):
         self.bus.subscribe("notify.info", self._send_notification)
         self.bus.subscribe("notify.error", self._send_notification)
         self.bus.subscribe("notify.status", self._send_notification)
+        self.bus.subscribe("notify.audio", self._send_audio_notification)
         logger.info("Notifier module initialized.")
 
     async def _send_notification(self, data: Dict[str, Any]):
@@ -34,3 +35,22 @@ class Notifier(BaseModule):
                  await self.bot_app.bot.send_message(chat_id=chat_id, text=message)
              except Exception as e:
                  logger.error(f"Failed to send Telegram message: {e}")
+
+    async def _send_audio_notification(self, data: Dict[str, Any]):
+        audio_bytes = data.get("audio")
+        filename = data.get("filename", "audio.mp3")
+        source = data.get("source", "system")
+        caption = data.get("caption", "")
+
+        logger.info(f"AUDIO NOTIFICATION [{source}]: {filename}")
+
+        if self.bot_app and source.startswith("chat_"):
+            try:
+                chat_id = int(source.replace("chat_", ""))
+                logger.info(f"Sending Telegram audio to {chat_id}: {filename}")
+                import io
+                audio_file = io.BytesIO(audio_bytes)
+                audio_file.name = filename
+                await self.bot_app.bot.send_audio(chat_id=chat_id, audio=audio_file, caption=caption)
+            except Exception as e:
+                logger.error(f"Failed to send Telegram audio: {e}")

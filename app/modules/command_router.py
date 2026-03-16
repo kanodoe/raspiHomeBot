@@ -32,7 +32,10 @@ class CommandRouter(BaseModule):
             "status": "cmd.status.summary",
             "gate_open": "cmd.gate.open",
             "zigbee_set": "cmd.zigbee.set",
-            "arlo_status": "cmd.arlo.status"
+            "arlo_status": "cmd.arlo.status",
+            "acestep_start": "cmd.acestep.start",
+            "acestep_stop": "cmd.acestep.stop",
+            "acestep_generate": "cmd.acestep.generate"
         }
         
         event_type = mapping.get(command)
