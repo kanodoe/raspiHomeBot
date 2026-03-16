@@ -3,7 +3,7 @@ import uvicorn
 import gc
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from telegram import Update, BotCommand
+from telegram import Update, BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 from telegram.ext import ApplicationBuilder, CommandHandler
 from telegram.error import InvalidToken
 
@@ -85,12 +85,44 @@ async def register_commands(bot):
             commands.append(BotCommand("request_songs", "Solicitar más cupo al administrador"))
             commands.append(BotCommand("invitations_status", "Ver estado de invitaciones (Admin)"))
     elif mode == "songs":
-        commands.append(BotCommand("generate_song", "Generar una canción (AI)"))
-        commands.append(BotCommand("request_songs", "Solicitar más cupo al administrador"))
+        # Usuarios normales: solo /start (al entrar ven mensaje de bienvenida y que necesitan invitación)
+        await bot.set_my_commands(
+            [BotCommand("start", "Abrir el bot (necesitas invitación)")],
+            scope=BotCommandScopeDefault(),
+        )
+        # Admin: todos los comandos disponibles en el bot de canciones
+        admin_cmds = [
+            BotCommand("start", "Ver mi ID y estado del bot"),
+            BotCommand("generate_song", "Generar una canción (AI)"),
+            BotCommand("request_songs", "Solicitar más cupo al administrador"),
+            BotCommand("invite_link", "Generar enlace de invitación (Admin)"),
+            BotCommand("invite_songs", "Invitación por cupo de canciones (Admin)"),
+            BotCommand("grant_songs", "Dar más canciones a un usuario (Admin)"),
+            BotCommand("invitations_status", "Ver estado de invitaciones (Admin)"),
+        ]
+        if "acestep" in enabled:
+            admin_cmds.append(BotCommand("save_song", "Guardar permanentemente la última canción"))
+        await bot.set_my_commands(admin_cmds, scope=BotCommandScopeChat(chat_id=settings.ADMIN_TELEGRAM_ID))
+        logger.info("Telegram bot commands registered in API (songs: default + admin scope).")
+        return
     elif mode == "gate":
-        commands.append(BotCommand("gate_open", "Abrir el portón"))
-        commands.append(BotCommand("entrada", "Entrada (portón)"))
-        commands.append(BotCommand("salida", "Salida (portón)"))
+        # Usuarios normales: solo /start (necesitan invitación para el portón)
+        await bot.set_my_commands(
+            [BotCommand("start", "Abrir el bot (necesitas invitación)")],
+            scope=BotCommandScopeDefault(),
+        )
+        # Admin: todos los comandos del bot de portón
+        await bot.set_my_commands(
+            [
+                BotCommand("start", "Ver mi ID y estado del bot"),
+                BotCommand("gate_open", "Abrir el portón"),
+                BotCommand("entrada", "Entrada (portón)"),
+                BotCommand("salida", "Salida (portón)"),
+            ],
+            scope=BotCommandScopeChat(chat_id=settings.ADMIN_TELEGRAM_ID),
+        )
+        logger.info("Telegram bot commands registered in API (gate: default + admin scope).")
+        return
     await bot.set_my_commands(commands)
     logger.info("Telegram bot commands registered in API.")
 
@@ -182,6 +214,14 @@ def setup_bot():
             application.add_handler(conv_handler)
     elif mode == "songs":
         application.add_handler(CommandHandler("request_songs", solicitar_canciones))
+        # Admin en el bot de canciones: invitaciones y estado (los comandos están restringidos a ADMIN)
+        application.add_handler(CommandHandler("invite_link", invite_link))
+        application.add_handler(CommandHandler("invite_songs", invite_songs))
+        application.add_handler(CommandHandler("grant_songs", grant_songs))
+        application.add_handler(CommandHandler("invitations_status", estado_invitaciones))
+        if "acestep" in enabled:
+            application.add_handler(CommandHandler("save_song", acestep_save))
+            application.add_handler(CallbackQueryHandler(save_admin_song_callback, pattern="^save_admin_song$"))
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler("generate_song", generate_song_start)],
             states={

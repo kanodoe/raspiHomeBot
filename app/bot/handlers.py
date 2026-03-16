@@ -54,7 +54,9 @@ def restricted_to_song(func):
                     "Has agotado tu cupo de canciones. Puedes solicitar más al administrador con /request_songs."
                 )
                 return ConversationHandler.END
-        await update.message.reply_text("No tienes permiso para generar canciones.")
+        await update.message.reply_text(
+            "Necesitas una invitación para usar este bot. Contacta al administrador."
+        )
         return ConversationHandler.END
     return wrapped
 
@@ -171,6 +173,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         permission_service = PermissionService(session)
         role = await permission_service.get_user_role(user_id)
         remaining = await permission_service.get_remaining_songs(user_id)
+        bot_mode = getattr(settings, "BOT_MODE", "admin").strip().lower()
+
+        # Bot de canciones: solo invitados (o admin) pueden usar el bot
+        if bot_mode == "songs" and role != UserRole.ADMIN:
+            if not await permission_service.has_any_song_invitation(user_id):
+                await _reply_to_update(
+                    update, context,
+                    "Bienvenido al bot de canciones.\n\n"
+                    "Este bot es solo para invitados. Necesitas un *enlace de invitación* del administrador para obtener cupo de canciones.\n\n"
+                    f"Tu Telegram ID es: `{user_id}` (por si el administrador necesita invitarte).",
+                    parse_mode="Markdown",
+                )
+                return
+
+        # Bot de portón: solo invitados (o admin) pueden usar el bot
+        if bot_mode == "gate" and role != UserRole.ADMIN:
+            if not await permission_service.can_open_gate(user_id):
+                await _reply_to_update(
+                    update, context,
+                    "Bienvenido al bot del portón.\n\n"
+                    "Este bot es solo para invitados. Necesitas un *enlace de invitación* del administrador para el portón.\n\n"
+                    f"Tu Telegram ID es: `{user_id}` (por si el administrador necesita invitarte).",
+                    parse_mode="Markdown",
+                )
+                return
 
     if role == UserRole.ADMIN:
         await _reply_to_update(update, context,
@@ -262,10 +289,11 @@ def restricted_to_gate(func):
             if await permission_service.can_open_gate(user_id):
                 return await func(update, context, *args, **kwargs)
         msg = getattr(update, "message", None) or getattr(update, "effective_message", None)
+        text = "Necesitas una invitación para usar este bot (portón). Contacta al administrador."
         if msg:
-            await msg.reply_text("No tienes permiso para abrir el portón.")
+            await msg.reply_text(text)
         else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="No tienes permiso para abrir el portón.")
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
     return wrapped
 
 
@@ -607,7 +635,7 @@ async def solicitar_canciones(update: Update, context: ContextTypes.DEFAULT_TYPE
     async with AsyncSessionLocal() as session:
         permission_service = PermissionService(session)
         if not await permission_service.has_any_song_invitation(user_id):
-            await _reply_to_update(update, context, "Solo los invitados con cupo de canciones pueden usar este comando para solicitar más.")
+            await _reply_to_update(update, context, "Necesitas una invitación para usar este bot. Contacta al administrador.")
             return
         usage_service = UsageService(session)
         await usage_service.create_access_request(user_id, "more_songs", requested_value="+N")
