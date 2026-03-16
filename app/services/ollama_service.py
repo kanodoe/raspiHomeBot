@@ -26,7 +26,23 @@ class OllamaService:
             logger.info("Ollama is already running.")
             return True
 
+        from urllib.parse import urlparse
+        parsed = urlparse(cls._base_url)
+        host = parsed.hostname
+        is_local = host in ("localhost", "127.0.0.1", "0.0.0.0", None)
+
         try:
+            if not is_local and os.name != 'nt':
+                from app.utils.ssh import run_ssh_command
+                logger.info(f"Attempting to start Ollama remotely on {host} via SSH...")
+                if await run_ssh_command("ollama serve", host):
+                     # Wait for it to be ready
+                     for _ in range(15):
+                         await asyncio.sleep(2)
+                         if await cls.is_available(): return True
+                     return True
+                return False
+
             # On Windows, we try to run 'ollama serve'
             # If it's in PATH, this should work.
             cls._process = subprocess.Popen(
@@ -34,7 +50,7 @@ class OllamaService:
                 shell=True if os.name == 'nt' else False,
                 creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
             )
-            logger.info(f"Ollama started with PID: {cls._process.pid}")
+            logger.info(f"Ollama started locally with PID: {cls._process.pid}")
 
             # Wait for it to be ready
             for _ in range(15): # Wait up to 30 seconds

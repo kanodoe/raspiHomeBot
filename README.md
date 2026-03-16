@@ -125,22 +125,28 @@ El bot permite generar música utilizando **ACE-Step 1.5** y asistir en la creac
 - **Ollama** instalado en el host y disponible en el PATH del sistema.
 
 ### Configuración (.env)
-Asegúrate de configurar correctamente las rutas y puertos en tu archivo `.env`:
+Asegúrate de configurar correctamente las rutas y puertos en tu archivo `.env`. 
+
+**Nota para usuarios de Docker en Windows/macOS:**
+Si el bot corre en un contenedor y ACE-Step/Ollama están en el host, usa `host.docker.internal` en lugar de `127.0.0.1`.
+
 ```env
 # ACE-Step
-ACESTEP_PATH=C:\ruta\al\directorio\ACE-Step-1.5
-ACESTEP_HOST=127.0.0.1
+ACESTEP_PATH=C:\Users\TuUsuario\Desktop\ACE-Step-1.5
+ACESTEP_HOST=192.168.1.46  # IP del PC con ACE-Step (o host.docker.internal)
 ACESTEP_PORT=8001
 
 # Ollama
-OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_BASE_URL=http://192.168.1.46:11434  # IP del PC con Ollama
 OLLAMA_MODEL=llama3
 ```
 
 ### Gestión de Servicios
-Si los servicios no están corriendo por defecto, puedes levantarlos usando los comandos:
-- `/acestep_start`: Ejecuta el archivo `.bat` de la API de ACE-Step.
-- `/ollama_start`: Ejecuta `ollama serve` para levantar el servidor de IA local.
+Si los servicios no están corriendo por defecto, el bot intentará levantarlos:
+- `/acestep_start`: Si el bot está en la misma máquina, usa `subprocess`. Si el host es remoto, usa **SSH** (requiere servidor SSH en el destino).
+- `/ollama_start`: Similar a ACE-Step, intentará ejecutar `ollama serve` local o remotamente.
+
+> **Importante**: Para el control remoto vía SSH, asegúrate de que `SSH_USER` y `SSH_KEY_PATH` en el `.env` correspondan al equipo donde están ACE-Step y Ollama.
 
 ### Flujo de Generación de Canción
 1. Ejecuta `/generate_song`.

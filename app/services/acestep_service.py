@@ -17,29 +17,57 @@ class AceStepService:
             logger.info("ACE-Step API is already running.")
             return True
 
-        ace_path = Path(settings.ACESTEP_PATH)
-        bat_path = ace_path / "start_api_server.bat"
+        # Prepare the path for the bat file
+        bat_name = "start_api_server.bat"
+        if os.name != 'nt' and (":" in settings.ACESTEP_PATH or settings.ACESTEP_PATH.startswith("\\")):
+            # Construct Windows path string on POSIX
+            path_cleaned = settings.ACESTEP_PATH.rstrip("/\\")
+            bat_path_str = f"{path_cleaned}\\{bat_name}".replace("/", "\\")
+            ace_path_str = path_cleaned.replace("/", "\\")
+        else:
+            ace_path = Path(settings.ACESTEP_PATH)
+            bat_path = ace_path / bat_name
+            bat_path_str = str(bat_path)
+            ace_path_str = str(ace_path)
         
-        if not bat_path.exists():
-            logger.error(f"ACE-Step bat file not found at: {bat_path}")
+        # Check if we should try to run this locally or via SSH
+        is_windows_path = ":" in settings.ACESTEP_PATH or settings.ACESTEP_PATH.startswith("\\")
+        is_local = settings.ACESTEP_HOST in ("localhost", "127.0.0.1", "0.0.0.0")
+
+        if os.name != 'nt' and is_windows_path:
+            if not is_local:
+                from app.utils.ssh import run_ssh_command
+                logger.info(f"Attempting to start ACE-Step remotely on {settings.ACESTEP_HOST} via SSH...")
+                # Start in background if possible, but cmd /c might be enough if it returns
+                cmd = f'cmd /c "cd /d {ace_path_str} && set CHECK_UPDATE=false && {bat_name}"'
+                if await run_ssh_command(cmd, settings.ACESTEP_HOST):
+                    # Wait for it to be ready
+                    for _ in range(15):
+                        await asyncio.sleep(2)
+                        if await cls.is_api_ready(): return True
+                    return True
+                return False
+            else:
+                logger.error(f"Cannot run Windows path '{settings.ACESTEP_PATH}' on {os.name} locally. Use a remote ACESTEP_HOST or run the bot on the host.")
+                return False
+
+        if not Path(bat_path_str).exists() and os.name == 'nt':
+            logger.error(f"ACE-Step bat file not found at: {bat_path_str}")
             return False
 
         try:
-            # En Windows, usamos env vars para saltar el check de update
-            # según vimos en el archivo .bat (set CHECK_UPDATE=true)
-            # Podríamos intentar sobreescribirla pasando una variable de entorno al proceso.
             env = os.environ.copy()
             env["CHECK_UPDATE"] = "false"
 
             # shell=True es necesario para .bat en Windows
             cls._process = subprocess.Popen(
-                [str(bat_path)],
-                cwd=str(ace_path),
+                [bat_path_str],
+                cwd=ace_path_str,
                 shell=True,
                 env=env,
-                creationflags=subprocess.CREATE_NEW_CONSOLE
+                creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
             )
-            logger.info(f"ACE-Step API started with PID: {cls._process.pid}")
+            logger.info(f"ACE-Step API started locally with PID: {cls._process.pid}")
             
             # Wait for the API to be ready
             for _ in range(30): # Wait up to 30 seconds
