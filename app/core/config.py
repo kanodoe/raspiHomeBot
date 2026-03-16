@@ -55,6 +55,8 @@ class AppSettings(BaseSettings):
     PORTON_CHANNEL_ID: Optional[str] = None
     # API key opcional para proteger endpoints de consulta
     API_KEY: Optional[str] = None
+    # Puerto HTTP de la API (cada servicio en docker-compose debe usar uno distinto si comparten host)
+    PORT: int = 8000
 
     # From config.yaml (default values or loaded later)
     LOG_LEVEL: str = "INFO"

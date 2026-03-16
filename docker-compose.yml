@@ -1,5 +1,6 @@
 # Para que el bot de canciones (t.me/raspi_song_bot) tenga comandos y responda,
 # debe correr un proceso con BOT_MODE=songs. Mismo código, otro contenedor.
+# Con network_mode: host ambos comparten la red del host; cada uno debe escuchar en un puerto distinto (PORT).
 # Levanta ambos: docker-compose up -d
 services:
   homebot:
@@ -17,6 +18,7 @@ services:
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////app/data/home_automation.db
       - BOT_MODE=admin
+      - PORT=8000
     network_mode: host # Crucial for WOL to work on local network from container
 
   homebot-songs:
@@ -31,4 +33,5 @@ services:
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////app/data/home_automation.db
       - BOT_MODE=songs
+      - PORT=8001
     network_mode: host
