@@ -185,19 +185,39 @@ class OllamaService:
         return None
 
     @classmethod
-    async def suggest_song_details(cls, user_prompt: str, refinamiento: Optional[str] = None) -> Optional[Dict[str, str]]:
+    async def suggest_song_details(
+        cls,
+        user_prompt: str,
+        refinamiento: Optional[str] = None,
+        language_code: Optional[str] = None,
+        style_only: bool = False,
+    ) -> Optional[Dict[str, str]]:
         """
         Suggests style and lyrics based on a user prompt (ACE-Step compatible format).
+        Style/tags are always in English; lyrics in the requested language (or empty if style_only).
         Returns a dict with 'style' and 'lyrics'.
         """
         from app.prompts import (
             SYSTEM_PROMPT_STYLE_LYRICS,
+            SYSTEM_PROMPT_STYLE_ONLY,
             build_user_prompt,
+            get_language_name,
+            get_system_prompt_style_lyrics,
             parse_style_lyrics_response,
         )
 
-        prompt = build_user_prompt(user_prompt, refinamiento)
-        response_text = await cls.generate_text(prompt, SYSTEM_PROMPT_STYLE_LYRICS)
+        if style_only:
+            system = SYSTEM_PROMPT_STYLE_ONLY
+            prompt = build_user_prompt(user_prompt, refinamiento, style_only=True)
+        elif language_code:
+            lang_name = get_language_name(language_code)
+            system = get_system_prompt_style_lyrics(lang_name)
+            prompt = build_user_prompt(user_prompt, refinamiento, language_name=lang_name, style_only=False)
+        else:
+            system = SYSTEM_PROMPT_STYLE_LYRICS
+            prompt = build_user_prompt(user_prompt, refinamiento)
+
+        response_text = await cls.generate_text(prompt, system)
         if not response_text:
             if cls._last_error == "model_not_found":
                 return {

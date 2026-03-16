@@ -10,11 +10,11 @@ from app.services.wol_service import WOLService
 from app.services.gate_service import GateService
 from app.services.pc_monitor_service import PCMonitorService
 from app.services.ollama_service import OllamaService
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import ConversationHandler, MessageHandler, filters
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 
 # Conversation states for generate_song
-MODE_SELECT, STYLE, LYRICS_CHOICE, LYRICS_TEXT, AI_PROMPT, AI_REVIEW = range(6)
+MODE_SELECT, STYLE, LYRICS_CHOICE, LYRICS_TEXT, AI_PROMPT, AI_REVIEW, LYRICS_OR_STYLE, AI_LANGUAGE = range(8)
 
 def restricted(role: UserRole):
     def decorator(func):
@@ -169,8 +169,8 @@ async def ollama_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted(UserRole.USER)
 async def generate_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Limpiar estado de intentos anteriores para que Manual no use datos viejos
-    for key in ("song_style", "song_lyrics", "refine_target"):
+    # Limpiar estado de intentos anteriores
+    for key in ("song_style", "song_lyrics", "refine_target", "style_only", "song_theme", "song_lyrics_lang"):
         context.user_data.pop(key, None)
     reply_keyboard = [["Manual", "Asistido por IA"]]
     await update.message.reply_text(
@@ -197,13 +197,34 @@ async def generate_song_mode(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 )
                 return await generate_song_ask_style(update, context)
 
+        # Preguntar si con letra o solo estilo (instrumental); si solo estilo no preguntamos idioma
+        reply_keyboard = [["Con letra", "Solo estilo (sin letra)"]]
         await update.message.reply_text(
-            "Describe el tema de la canción, sentimientos o cualquier indicación para que la IA genere opciones:",
-            reply_markup=ReplyKeyboardRemove()
+            "¿La canción llevará letra o solo quieres definir el estilo (instrumental)?",
+            reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
         )
-        return AI_PROMPT
+        return LYRICS_OR_STYLE
     else:
         return await generate_song_ask_style(update, context)
+
+
+async def generate_song_lyrics_or_style(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.lower()
+    if "solo" in text or "estilo" in text or "instrumental" in text or "sin letra" in text:
+        context.user_data["style_only"] = True
+        await update.message.reply_text(
+            "Describe el tema o estilo musical que quieres (ej: rock épico, ambiente cinematográfico). "
+            "El agente generará los tags del estilo en inglés para ACE-Step.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+    else:
+        context.user_data["style_only"] = False
+        await update.message.reply_text(
+            "Describe el tema de la canción, sentimientos o lo que quieras para que la IA genere estilo y letra. "
+            "Luego elegirás en qué idioma quieres la letra.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+    return AI_PROMPT
 
 async def generate_song_ask_style(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -212,38 +233,110 @@ async def generate_song_ask_style(update: Update, context: ContextTypes.DEFAULT_
     )
     return STYLE
 
-async def generate_song_ai_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_prompt = update.message.text
-    await update.message.reply_text("Generando sugerencias con Ollama... Por favor espera.")
-    
-    suggestions = await OllamaService.suggest_song_details(user_prompt)
-    if not suggestions:
-        await update.message.reply_text("Hubo un error al generar sugerencias. Por favor, intenta describir el tema de nuevo:")
-        return AI_PROMPT
-    if suggestions.get("error") == "model_not_found":
-        msg = suggestions.get("message", "El modelo configurado no está instalado en Ollama.")
-        await update.message.reply_text(
-            f"❌ {msg}\n\n"
-            "Puedes usar /generate_song de nuevo y elegir **Manual** para crear la canción sin asistente de IA.",
-            parse_mode="Markdown"
-        )
-        return ConversationHandler.END
+def _build_language_keyboard():
+    from app.prompts import LYRICS_LANGUAGE_OPTIONS
+    buttons = [
+        [InlineKeyboardButton(name, callback_data=f"lang_{code}")]
+        for code, name in LYRICS_LANGUAGE_OPTIONS
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+
+async def _send_suggestion_and_review(update_or_query, context: ContextTypes.DEFAULT_TYPE, suggestions: dict, is_style_only: bool):
+    """Envía la sugerencia de estilo/letra y muestra botones de revisión. update_or_query es update o callback_query (con .message)."""
     context.user_data["song_style"] = suggestions["style"]
-    context.user_data["song_lyrics"] = suggestions["lyrics"]
-    
+    context.user_data["song_lyrics"] = suggestions.get("lyrics") or ""
+    lyrics_display = (suggestions.get("lyrics") or "").strip() or "(Solo estilo / sin letra)"
     response_text = (
         f"🤖 *Sugerencia de la IA:*\n\n"
         f"*Estilo:* {suggestions['style']}\n\n"
-        f"*Letra:*\n{suggestions['lyrics']}\n\n"
+        f"*Letra:*\n{lyrics_display}\n\n"
         "¿Qué te parece?"
     )
-    
     reply_keyboard = [["Aceptar", "Refinar estilo", "Refinar letra", "Regenerar todo"]]
+    if is_style_only:
+        reply_keyboard = [["Aceptar", "Refinar estilo", "Regenerar todo"]]
+    markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+    msg = update_or_query.message
+    await msg.reply_text(response_text, parse_mode="Markdown", reply_markup=markup)
+
+
+async def generate_song_ai_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_prompt = update.message.text.strip()
+    is_refinement = "refine_target" in context.user_data
+    style_only = context.user_data.get("style_only", False)
+    theme = context.user_data.get("song_theme") if is_refinement else user_prompt
+    if not is_refinement:
+        context.user_data["song_theme"] = user_prompt
+
+    if is_refinement:
+        await update.message.reply_text("Aplicando cambios... Por favor espera.")
+        refinamiento = user_prompt
+        suggestions = await OllamaService.suggest_song_details(
+            theme,
+            refinamiento=refinamiento,
+            language_code=context.user_data.get("song_lyrics_lang"),
+            style_only=style_only,
+        )
+        if not suggestions:
+            await update.message.reply_text("No se pudo aplicar el refinamiento. Intenta de nuevo:")
+            return AI_PROMPT
+        if suggestions.get("error") == "model_not_found":
+            msg = suggestions.get("message", "El modelo configurado no está instalado en Ollama.")
+            await update.message.reply_text(f"❌ {msg}\n\nPuedes usar /generate_song y elegir **Manual**.", parse_mode="Markdown")
+            return ConversationHandler.END
+        context.user_data.pop("refine_target", None)
+        await _send_suggestion_and_review(update, context, suggestions, style_only)
+        return AI_REVIEW
+
+    await update.message.reply_text("Generando sugerencias con Ollama... Por favor espera.")
+    if style_only:
+        suggestions = await OllamaService.suggest_song_details(theme, style_only=True)
+        if not suggestions:
+            await update.message.reply_text("Hubo un error al generar. Intenta describir el tema de nuevo:")
+            return AI_PROMPT
+        if suggestions.get("error") == "model_not_found":
+            msg = suggestions.get("message", "El modelo configurado no está instalado en Ollama.")
+            await update.message.reply_text(f"❌ {msg}\n\nPuedes usar /generate_song y elegir **Manual**.", parse_mode="Markdown")
+            return ConversationHandler.END
+        await _send_suggestion_and_review(update, context, suggestions, style_only=True)
+        return AI_REVIEW
+
+    # Con letra: pedir idioma con InlineKeyboard
     await update.message.reply_text(
-        response_text,
-        parse_mode="Markdown",
-        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+        "¿En qué idioma quieres la letra? (El estilo se genera siempre en inglés para el modelo.)",
+        reply_markup=_build_language_keyboard()
     )
+    return AI_LANGUAGE
+
+
+async def generate_song_ask_language_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recuerda al usuario que use los botones para elegir idioma."""
+    await update.message.reply_text(
+        "Elige el idioma de la letra con los botones de abajo.",
+        reply_markup=_build_language_keyboard()
+    )
+    return AI_LANGUAGE
+
+
+async def generate_song_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not query.data or not query.data.startswith("lang_"):
+        return AI_LANGUAGE
+    code = query.data.replace("lang_", "", 1)
+    context.user_data["song_lyrics_lang"] = code
+    theme = context.user_data.get("song_theme", "")
+    await query.message.reply_text("Generando sugerencias con Ollama... Por favor espera.")
+    suggestions = await OllamaService.suggest_song_details(theme, language_code=code)
+    if not suggestions:
+        await query.message.reply_text("Error al generar. Intenta de nuevo con /generate_song.")
+        return ConversationHandler.END
+    if suggestions.get("error") == "model_not_found":
+        msg = suggestions.get("message", "El modelo no está instalado en Ollama.")
+        await query.message.reply_text(f"❌ {msg}", parse_mode="Markdown")
+        return ConversationHandler.END
+    await _send_suggestion_and_review(query, context, suggestions, is_style_only=False)
     return AI_REVIEW
 
 async def generate_song_ai_review(update: Update, context: ContextTypes.DEFAULT_TYPE):

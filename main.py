@@ -16,12 +16,14 @@ from app.services.permission_service import PermissionService
 from app.bot.handlers import (
     pc_on, pc_off, pc_status, status_summary, gate_open, invite, start,
     acestep_start, acestep_stop, acestep_save, ollama_start, ollama_stop,
-    generate_song_start, generate_song_mode, generate_song_style, 
-    generate_song_lyrics_choice, generate_song_lyrics_text, 
-    generate_song_ai_prompt, generate_song_ai_review, generate_song_cancel,
-    MODE_SELECT, STYLE, LYRICS_CHOICE, LYRICS_TEXT, AI_PROMPT, AI_REVIEW
+    generate_song_start, generate_song_mode, generate_song_style,
+    generate_song_lyrics_choice, generate_song_lyrics_text,
+    generate_song_lyrics_or_style, generate_song_ai_prompt, generate_song_ai_review,
+    generate_song_language_callback, generate_song_ask_language_buttons, generate_song_cancel,
+    MODE_SELECT, STYLE, LYRICS_CHOICE, LYRICS_TEXT, AI_PROMPT, AI_REVIEW,
+    LYRICS_OR_STYLE, AI_LANGUAGE,
 )
-from telegram.ext import ApplicationBuilder, CommandHandler, ConversationHandler, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ConversationHandler, MessageHandler, filters
 
 # Modules
 from app.modules.command_router import CommandRouter
@@ -105,7 +107,12 @@ def setup_bot():
             entry_points=[CommandHandler("generate_song", generate_song_start)],
             states={
                 MODE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_mode)],
+                LYRICS_OR_STYLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_lyrics_or_style)],
                 AI_PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_ai_prompt)],
+                AI_LANGUAGE: [
+                    CallbackQueryHandler(generate_song_language_callback, pattern="^lang_"),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_ask_language_buttons),
+                ],
                 AI_REVIEW: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_ai_review)],
                 STYLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_style)],
                 LYRICS_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_song_lyrics_choice)],
