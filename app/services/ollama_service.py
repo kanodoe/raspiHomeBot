@@ -29,13 +29,18 @@ class OllamaService:
         from urllib.parse import urlparse
         parsed = urlparse(cls._base_url)
         host = parsed.hostname
+        # If we are in Linux (Docker) and the target is a localhost, it's likely the Windows host.
+        # However, it's safer to always check if we should use SSH to reach the Windows environment.
         is_local = host in ("localhost", "127.0.0.1", "0.0.0.0", None)
-
+        
         try:
-            if not is_local and os.name != 'nt':
+            # If on POSIX, we almost always want to start Ollama on the host via SSH 
+            # unless the user really installed Ollama inside the Docker container.
+            if os.name != 'nt':
                 from app.utils.ssh import run_ssh_command
-                logger.info(f"Attempting to start Ollama remotely on {host} via SSH...")
-                if await run_ssh_command("ollama serve", host):
+                ssh_host = host if not is_local else settings.PC_IP
+                logger.info(f"Attempting to start Ollama on host {ssh_host} via SSH...")
+                if await run_ssh_command("ollama serve", ssh_host):
                      # Wait for it to be ready
                      for _ in range(15):
                          await asyncio.sleep(2)

@@ -127,17 +127,26 @@ El bot permite generar música utilizando **ACE-Step 1.5** y asistir en la creac
 ### Configuración (.env)
 Asegúrate de configurar correctamente las rutas y puertos en tu archivo `.env`. 
 
-**Nota para usuarios de Docker en Windows/macOS:**
-Si el bot corre en un contenedor y ACE-Step/Ollama están en el host, usa `host.docker.internal` en lugar de `127.0.0.1`.
+**Nota para usuarios de Docker:**
+Si el bot corre en un contenedor y ACE-Step/Ollama están en el host (Windows):
+- Usa `PC_IP` (ej: `192.168.1.46`) o `host.docker.internal` en lugar de `127.0.0.1`.
+- Configura correctamente `SSH_USER` y `SSH_KEY_PATH` para que el bot pueda acceder al host.
+- Asegúrate de que el **Servidor OpenSSH** esté habilitado en Windows (Configuración > Aplicaciones > Características opcionales).
+- El bot detectará automáticamente que está en Linux y usará SSH para ejecutar los comandos de Windows (`.bat`, `ollama serve`).
 
 ```env
+# Configuración de Red para Docker -> Host Windows
+PC_IP=192.168.1.46  # IP de tu computador en la red LAN
+SSH_USER=tu_usuario_windows
+SSH_KEY_PATH=/home/bot/.ssh/id_rsa
+
 # ACE-Step
-ACESTEP_PATH=C:\Users\TuUsuario\Desktop\ACE-Step-1.5
-ACESTEP_HOST=192.168.1.46  # IP del PC con ACE-Step (o host.docker.internal)
+ACESTEP_PATH=C:\Users\KanoDoe\Desktop\ACE-Step-1.5
+ACESTEP_HOST=192.168.1.46  # Misma IP que PC_IP o host.docker.internal
 ACESTEP_PORT=8001
 
 # Ollama
-OLLAMA_BASE_URL=http://192.168.1.46:11434  # IP del PC con Ollama
+OLLAMA_BASE_URL=http://192.168.1.46:11434
 OLLAMA_MODEL=llama3
 ```
 

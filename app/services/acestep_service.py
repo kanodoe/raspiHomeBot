@@ -32,24 +32,28 @@ class AceStepService:
         
         # Check if we should try to run this locally or via SSH
         is_windows_path = ":" in settings.ACESTEP_PATH or settings.ACESTEP_PATH.startswith("\\")
-        is_local = settings.ACESTEP_HOST in ("localhost", "127.0.0.1", "0.0.0.0")
+        # In Docker (POSIX), localhost/127.0.0.1 is the container itself.
+        # If it's a Windows path and we are on POSIX, we MUST use SSH to talk to the host.
+        use_ssh = os.name != 'nt' and is_windows_path
 
-        if os.name != 'nt' and is_windows_path:
-            if not is_local:
-                from app.utils.ssh import run_ssh_command
-                logger.info(f"Attempting to start ACE-Step remotely on {settings.ACESTEP_HOST} via SSH...")
-                # Start in background if possible, but cmd /c might be enough if it returns
-                cmd = f'cmd /c "cd /d {ace_path_str} && set CHECK_UPDATE=false && {bat_name}"'
-                if await run_ssh_command(cmd, settings.ACESTEP_HOST):
-                    # Wait for it to be ready
-                    for _ in range(15):
-                        await asyncio.sleep(2)
-                        if await cls.is_api_ready(): return True
-                    return True
-                return False
-            else:
-                logger.error(f"Cannot run Windows path '{settings.ACESTEP_PATH}' on {os.name} locally. Use a remote ACESTEP_HOST or run the bot on the host.")
-                return False
+        if use_ssh:
+            # If host is localhost/127.0.0.1 on POSIX, it should probably be host.docker.internal 
+            # or the PC_IP to reach the host from Docker.
+            ssh_host = settings.ACESTEP_HOST
+            if ssh_host in ("localhost", "127.0.0.1", "0.0.0.0"):
+                ssh_host = settings.PC_IP # Fallback to PC_IP if host is set to local on Docker
+            
+            from app.utils.ssh import run_ssh_command
+            logger.info(f"Attempting to start ACE-Step remotely on {ssh_host} via SSH (Windows path on {os.name})...")
+            # Start in background if possible, but cmd /c might be enough if it returns
+            cmd = f'cmd /c "cd /d {ace_path_str} && set CHECK_UPDATE=false && {bat_name}"'
+            if await run_ssh_command(cmd, ssh_host):
+                # Wait for it to be ready
+                for _ in range(15):
+                    await asyncio.sleep(2)
+                    if await cls.is_api_ready(): return True
+                return True
+            return False
 
         if not Path(bat_path_str).exists() and os.name == 'nt':
             logger.error(f"ACE-Step bat file not found at: {bat_path_str}")
