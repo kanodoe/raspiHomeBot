@@ -13,7 +13,7 @@ from app.database.session import init_db, AsyncSessionLocal
 from app.services.permission_service import PermissionService
 from app.bot.handlers import (
     pc_on, pc_off, pc_status, status_summary, gate_open, invite, start,
-    acestep_start, acestep_stop, ollama_start, ollama_stop,
+    acestep_start, acestep_stop, acestep_save, ollama_start, ollama_stop,
     generate_song_start, generate_song_mode, generate_song_style, 
     generate_song_lyrics_choice, generate_song_lyrics_text, 
     generate_song_ai_prompt, generate_song_ai_review, generate_song_cancel,
@@ -58,6 +58,7 @@ async def register_commands(bot):
         commands.extend([
             BotCommand("acestep_start", "Iniciar ACE-Step API"),
             BotCommand("acestep_stop", "Detener ACE-Step API"),
+            BotCommand("save_song", "Guardar permanentemente la última canción"),
         ])
     
     if "ollama" in enabled:
@@ -91,6 +92,7 @@ def setup_bot():
     if "acestep" in enabled:
         application.add_handler(CommandHandler("acestep_start", acestep_start))
         application.add_handler(CommandHandler("acestep_stop", acestep_stop))
+        application.add_handler(CommandHandler("save_song", acestep_save))
 
     if "ollama" in enabled:
         application.add_handler(CommandHandler("ollama_start", ollama_start))

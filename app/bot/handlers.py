@@ -142,6 +142,14 @@ async def acestep_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Event bus not available.")
 
 @restricted(UserRole.USER)
+async def acestep_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bus = context.bot_data.get("bus")
+    if bus:
+        await bus.publish("command", {"command": "acestep_save", "source": f"chat_{update.effective_chat.id}"})
+    else:
+        await update.message.reply_text("Event bus no disponible.")
+
+@restricted(UserRole.USER)
 async def ollama_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bus = context.bot_data.get("bus")
     if bus:
@@ -268,7 +276,11 @@ async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYP
     style = context.user_data.get("song_style")
     bus = context.bot_data.get("bus")
     
-    await update.message.reply_text("Iniciando generación... Esto puede tardar unos minutos.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(
+        "Iniciando generación... Esto puede tardar unos minutos.\n"
+        "Si te gusta el resultado, podrás guardarla permanentemente con /save_song.", 
+        reply_markup=ReplyKeyboardRemove()
+    )
     
     if bus:
         await bus.publish("command", {

@@ -2,6 +2,8 @@ import asyncio
 import os
 import subprocess
 import httpx
+import json
+import urllib.parse
 from pathlib import Path
 from typing import Optional, Dict, Any
 from app.core.config import settings
@@ -212,7 +214,37 @@ class AceStepService:
                     data = response.json()
                     results = data.get("data", [])
                     if results:
-                        return results[0]
+                        status_data = results[0]
+                        status = status_data.get("status")
+                        
+                        # Normalize status for ACE-Step 1.5 (int to string)
+                        if status == 1:
+                            status_data["status"] = "completed"
+                        elif status in (2, -1):
+                            status_data["status"] = "failed"
+                        elif status == 0:
+                            status_data["status"] = "processing"
+                        
+                        # Extract audio_path from serialized 'result' field if missing at top level
+                        if status_data.get("status") == "completed" and not status_data.get("audio_path"):
+                            result_raw = status_data.get("result")
+                            if result_raw and isinstance(result_raw, str):
+                                try:
+                                    res_list = json.loads(result_raw)
+                                    if res_list and isinstance(res_list, list):
+                                        # Take first item in results array
+                                        item = res_list[0]
+                                        file_val = item.get("file")
+                                        if file_val and "path=" in file_val:
+                                            parsed = urllib.parse.urlparse(file_val)
+                                            query = urllib.parse.parse_qs(parsed.query)
+                                            path_list = query.get("path")
+                                            if path_list:
+                                                status_data["audio_path"] = path_list[0]
+                                except Exception as parse_err:
+                                    logger.debug(f"Could not parse serialized ACE-Step results: {parse_err}")
+                                    
+                        return status_data
         except Exception as e:
             logger.error(f"Error querying task status at {url}: {e}")
         return None
@@ -229,3 +261,28 @@ class AceStepService:
         except Exception as e:
             logger.error(f"Error downloading audio from {url}: {e}")
         return None
+
+    @classmethod
+    async def save_song_locally(cls, task_id: str, audio_bytes: bytes, metadata: Dict[str, Any]) -> bool:
+        """
+        Saves audio and metadata JSON of the song to the configured path.
+        """
+        try:
+            save_dir = Path(settings.ACESTEP_SAVE_PATH)
+            if not save_dir.exists():
+                save_dir.mkdir(parents=True, exist_ok=True)
+            
+            audio_file = save_dir / f"song_{task_id}.mp3"
+            json_file = save_dir / f"song_{task_id}.json"
+            
+            with open(audio_file, "wb") as f:
+                f.write(audio_bytes)
+            
+            with open(json_file, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=4, ensure_ascii=False)
+            
+            logger.info(f"Song {task_id} saved locally at {save_dir}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving song locally: {e}")
+            return False

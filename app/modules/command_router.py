@@ -37,7 +37,8 @@ class CommandRouter(BaseModule):
             "acestep_stop": "cmd.acestep.stop",
             "ollama_start": "cmd.ollama.start",
             "ollama_stop": "cmd.ollama.stop",
-            "acestep_generate": "cmd.acestep.generate"
+            "acestep_generate": "cmd.acestep.generate",
+            "acestep_save": "cmd.acestep.save"
         }
         
         event_type = mapping.get(command)

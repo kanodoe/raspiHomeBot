@@ -14,6 +14,7 @@ class AceStepController(BaseModule):
 
     def __init__(self, bus):
         super().__init__(bus)
+        self.last_generated_songs = {} # {source: {"audio": bytes, "metadata": dict, "task_id": str}}
 
     async def start(self):
         self.bus.subscribe("cmd.acestep.start", self._handle_start)
@@ -21,6 +22,7 @@ class AceStepController(BaseModule):
         self.bus.subscribe("cmd.ollama.start", self._handle_ollama_start)
         self.bus.subscribe("cmd.ollama.stop", self._handle_ollama_stop)
         self.bus.subscribe("cmd.acestep.generate", self._handle_generate)
+        self.bus.subscribe("cmd.acestep.save", self._handle_save)
         logger.info("AceStepController module initialized.")
 
     async def _handle_start(self, data: Dict[str, Any]):
@@ -107,7 +109,14 @@ class AceStepController(BaseModule):
                 if audio_path:
                     audio_bytes = await AceStepService.download_audio(audio_path)
                     if audio_bytes:
-                        # We need a way to send the audio file back. 
+                        # Cache for potential saving later
+                        self.last_generated_songs[source] = {
+                            "audio": audio_bytes,
+                            "metadata": status_data,
+                            "task_id": task_id
+                        }
+                        
+                        # We need a way to send the audio file back.
                         # Notifier currently only supports text.
                         # Let's publish a special event for audio.
                         await self.bus.publish("notify.audio", {
@@ -124,4 +133,24 @@ class AceStepController(BaseModule):
                 await self.bus.publish("notify.error", {"message": f"Error en la generación: {error_msg}", "source": source})
                 return
         
-        await self.bus.publish("notify.error", {"message": "La generación de la canción ha tardado demasiado.", "source": source})
+    async def _handle_save(self, data: Dict[str, Any]):
+        source = data.get("source")
+        song_data = self.last_generated_songs.get(source)
+        
+        if not song_data:
+            logger.warning(f"AceStepController: No recent song found to save for {source}")
+            await self.bus.publish("notify.error", {"message": "No hay ninguna canción reciente para guardar.", "source": source})
+            return
+            
+        logger.info(f"AceStepController: Saving song {song_data['task_id']} (source: {source})")
+        
+        success = await AceStepService.save_song_locally(
+            song_data["task_id"], 
+            song_data["audio"], 
+            song_data["metadata"]
+        )
+        
+        if success:
+            await self.bus.publish("notify.status", {"message": f"✅ Canción guardada correctamente en el servidor (ID: {song_data['task_id']}).", "source": source})
+        else:
+            await self.bus.publish("notify.error", {"message": "❌ Error al intentar guardar la canción localmente.", "source": source})
