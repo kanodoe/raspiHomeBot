@@ -112,70 +112,108 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if payload.startswith(INVITE_GATE_PREFIX):
             token = payload[len(INVITE_GATE_PREFIX):].strip()
             data = decode_gate_payload(token, secret)
-            if data and "d" in data:
-                days = data["d"]
-                user = update.effective_user
-                async with AsyncSessionLocal() as session:
-                    permission_service = PermissionService(session)
-                    await permission_service.create_gate_invitation(
-                        inviter_id=settings.ADMIN_TELEGRAM_ID,
-                        invitee_id=user_id,
-                        invitee_username=user.username or f"User_{user_id}",
-                        days=days,
-                        invitee_first_name=user.first_name,
-                        invitee_last_name=user.last_name,
-                    )
-                from app.utils.user_display import format_user_display
-                display = format_user_display(
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    username=user.username,
-                    telegram_id=user_id,
+            if not data or "d" not in data:
+                logger.warning(
+                    "Invite link decode failed for user %s (gate). "
+                    "If using multiple bots, set INVITE_LINK_SECRET to the same value in all .env.",
+                    user_id,
                 )
-                msg_reply = (
-                    f"✅ Tienes acceso al portón por {days} día(s).\n\n"
-                    "Usa /gate_open cuando necesites abrir el portón. "
-                    "No tienes acceso a otras funciones del bot (PC, canciones, etc.)."
+                await _reply_to_update(
+                    update, context,
+                    "Este enlace de invitación al portón no pudo validarse (dañado o expirado). "
+                    "Pide al administrador un nuevo enlace.",
+                    parse_mode="Markdown",
                 )
-                reply_target = getattr(update, "message", None) or getattr(update, "effective_message", None)
-                if reply_target:
-                    await reply_target.reply_text(msg_reply)
-                else:
-                    await context.bot.send_message(chat_id=update.effective_chat.id, text=msg_reply)
-                try:
-                    await context.bot.send_message(
-                        chat_id=settings.ADMIN_TELEGRAM_ID,
-                        text=f"🚪 El usuario {display} ha usado tu enlace de portón y tiene {days} día(s) de acceso."
-                    )
-                except Exception as e:
-                    logger.warning(f"Could not notify admin (gate link): {e}")
                 return
+            days = data["d"]
+            user = update.effective_user
+            async with AsyncSessionLocal() as session:
+                permission_service = PermissionService(session)
+                await permission_service.ensure_admin(settings.ADMIN_TELEGRAM_ID)
+                await permission_service.create_gate_invitation(
+                    inviter_id=settings.ADMIN_TELEGRAM_ID,
+                    invitee_id=user_id,
+                    invitee_username=user.username or f"User_{user_id}",
+                    days=days,
+                    invitee_first_name=user.first_name,
+                    invitee_last_name=user.last_name,
+                )
+            from app.utils.user_display import format_user_display
+            display = format_user_display(
+                first_name=user.first_name,
+                last_name=user.last_name,
+                username=user.username,
+                telegram_id=user_id,
+            )
+            msg_reply = (
+                f"✅ Tienes acceso al portón por {days} día(s).\n\n"
+                "Usa /gate_open cuando necesites abrir el portón. "
+                "No tienes acceso a otras funciones del bot (PC, canciones, etc.)."
+            )
+            reply_target = getattr(update, "message", None) or getattr(update, "effective_message", None)
+            if reply_target:
+                await reply_target.reply_text(msg_reply)
+            else:
+                await context.bot.send_message(chat_id=update.effective_chat.id, text=msg_reply)
+            try:
+                await context.bot.send_message(
+                    chat_id=settings.ADMIN_TELEGRAM_ID,
+                    text=f"🚪 El usuario {display} ha usado tu enlace de portón y tiene {days} día(s) de acceso."
+                )
+            except Exception as e:
+                logger.warning(f"Could not notify admin (gate link): {e}")
+            return
 
         # Canciones: inv_<token>
         if payload.startswith(INVITE_PREFIX):
             token = payload[len(INVITE_PREFIX):].strip()
             data = decode_invite_payload(token, secret)
-            if data and "c" in data:
-                count = data["c"]
-                user = update.effective_user
-                async with AsyncSessionLocal() as session:
-                    permission_service = PermissionService(session)
-                    await permission_service.create_song_invitation(
-                        inviter_id=settings.ADMIN_TELEGRAM_ID,
-                        invitee_id=user_id,
-                        invitee_username=user.username or f"User_{user_id}",
-                        song_quota=count,
-                        duration_hours=None,
-                        invitee_first_name=user.first_name,
-                        invitee_last_name=user.last_name,
-                    )
-                from app.utils.user_display import format_user_display
-                display = format_user_display(
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    username=user.username,
-                    telegram_id=user_id,
+            if not data or "c" not in data:
+                logger.warning(
+                    "Invite link decode failed for user %s (songs). "
+                    "If using multiple bots (admin/songs/gate), set INVITE_LINK_SECRET to the same value in all .env.",
+                    user_id,
                 )
+                await _reply_to_update(
+                    update, context,
+                    "Este enlace de invitación no pudo validarse (puede estar dañado o expirado). "
+                    "Pide al administrador que te envíe un *nuevo enlace* completo, sin recortar.",
+                    parse_mode="Markdown",
+                )
+                return
+            count = data["c"]
+            duration_hours = data.get("h")  # opcional: acceso limitado a H horas
+            user = update.effective_user
+            async with AsyncSessionLocal() as session:
+                permission_service = PermissionService(session)
+                await permission_service.ensure_admin(settings.ADMIN_TELEGRAM_ID)
+                await permission_service.create_song_invitation(
+                    inviter_id=settings.ADMIN_TELEGRAM_ID,
+                    invitee_id=user_id,
+                    invitee_username=user.username or f"User_{user_id}",
+                    song_quota=count,
+                    duration_hours=duration_hours,
+                    invitee_first_name=user.first_name,
+                    invitee_last_name=user.last_name,
+                )
+            from app.utils.user_display import format_user_display
+            display = format_user_display(
+                first_name=user.first_name,
+                last_name=user.last_name,
+                username=user.username,
+                telegram_id=user_id,
+            )
+            if duration_hours:
+                msg_reply = (
+                    f"✅ Tienes {count} canción(es) de regalo. Tu acceso dura *{duration_hours} hora(s)*.\n\n"
+                    "*Qué puedes hacer:*\n"
+                    "• /generate_song — Crear una canción.\n"
+                    "• /request_songs — Pedir más canciones al administrador cuando se te acaben.\n\n"
+                    "⚠️ El servicio de generación _puede no estar disponible en todo momento_. Si no funciona, contacta al administrador.\n\n"
+                    "No tienes acceso a otras funciones del bot (PC, portón, etc.)."
+                )
+                admin_notify = f"🎵 El usuario {display} ha usado tu enlace de invitación: {count} canción(es), acceso {duration_hours} h."
+            else:
                 msg_reply = (
                     f"✅ Tienes {count} canción(es) de regalo.\n\n"
                     "*Qué puedes hacer:*\n"
@@ -184,19 +222,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "⚠️ El servicio de generación _puede no estar disponible en todo momento_. Si no funciona, contacta al administrador.\n\n"
                     "No tienes acceso a otras funciones del bot (PC, portón, etc.)."
                 )
-                reply_target = getattr(update, "message", None) or getattr(update, "effective_message", None)
-                if reply_target:
-                    await reply_target.reply_text(msg_reply, parse_mode="Markdown")
-                else:
-                    await context.bot.send_message(chat_id=update.effective_chat.id, text=msg_reply, parse_mode="Markdown")
-                try:
-                    await context.bot.send_message(
-                        chat_id=settings.ADMIN_TELEGRAM_ID,
-                        text=f"🎵 El usuario {display} ha usado tu enlace de invitación y tiene {count} canción(es)."
-                    )
-                except Exception as e:
-                    logger.warning(f"Could not notify admin (invite link): {e}")
-                return
+                admin_notify = f"🎵 El usuario {display} ha usado tu enlace de invitación y tiene {count} canción(es)."
+            reply_target = getattr(update, "message", None) or getattr(update, "effective_message", None)
+            if reply_target:
+                await reply_target.reply_text(msg_reply, parse_mode="Markdown")
+            else:
+                await context.bot.send_message(chat_id=update.effective_chat.id, text=msg_reply, parse_mode="Markdown")
+            try:
+                await context.bot.send_message(chat_id=settings.ADMIN_TELEGRAM_ID, text=admin_notify)
+            except Exception as e:
+                logger.warning(f"Could not notify admin (invite link): {e}")
+            return
 
     # Saludo según tipo de usuario (evitar confundir a invitados con mensaje de admin)
     async with AsyncSessionLocal() as session:
@@ -233,7 +269,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _reply_to_update(update, context,
             f"Bienvenido a RaspiHomeBot (administrador).\n\n"
             f"Tu Telegram ID es: `{user_id}`. Este ID debe estar en `ADMIN_TELEGRAM_ID` en el `.env`.\n\n"
-            "Puedes usar todos los comandos del bot, invitar con /invite_link o /invite_songs y ver el estado con /invitations_status."
+            "Puedes usar todos los comandos del bot, invitar con /invite_link (N canciones), /invite_link_hours (N canciones + H horas) o /invite_songs; ver estado con /invitations_status."
         )
     elif role == UserRole.USER:
         await _reply_to_update(update, context,
@@ -495,13 +531,18 @@ async def _reply_to_update(update: Update, context: ContextTypes.DEFAULT_TYPE, t
 
 @restricted(UserRole.ADMIN)
 async def invite_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Genera un enlace de invitación cifrado; el bot te lo envía por mensaje privado. Uso: /invite_link <cantidad>"""
+    """Enlace por cantidad de canciones (acceso prolongado). Uso: /invite_link <cantidad>"""
     from app.core.config import settings
     from app.utils.invite_link import INVITE_PREFIX, encode_invite_payload
 
     args = context.args
     if len(args) < 1:
-        await _reply_to_update(update, context, "Uso: /invite_link <cantidad>\nEj: /invite_link 5 — te enviaré un enlace por privado; quien lo abra tendrá esa cantidad de canciones.")
+        await _reply_to_update(
+            update, context,
+            "Uso: /invite_link <cantidad>\n"
+            "Ej: /invite_link 5 — enlace por *cantidad de canciones* (acceso prolongado). "
+            "Te lo envío por privado."
+        )
         return
     try:
         count = int(args[0])
@@ -528,12 +569,69 @@ async def invite_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(
             chat_id=admin_chat_id,
-            text=f"🔗 Enlace de invitación ({count} canción/canciones):\n\n{link}\n\nEnvía este enlace a la persona que quieres invitar. Al abrirlo tendrá {count} canciones para generar."
+            text=f"🔗 Enlace por *cantidad de canciones* ({count}):\n\n{link}\n\nQuien lo abra tendrá {count} canción(es) para generar (acceso prolongado).",
+            parse_mode="Markdown",
         )
         if update.effective_chat.id != admin_chat_id:
             await _reply_to_update(update, context, "Te he enviado el enlace por mensaje privado.")
         else:
             await _reply_to_update(update, context, f"Enlace generado ({count} canciones). Revisa el mensaje de arriba.")
+    except Exception as e:
+        logger.warning(f"Could not send invite link to admin: {e}")
+        await _reply_to_update(update, context, "No pude enviarte el enlace por privado. Asegúrate de haber iniciado chat con el bot y vuelve a intentar.")
+
+
+@restricted(UserRole.ADMIN)
+async def invite_link_hours(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Enlace por cantidad de canciones y duración en horas. Uso: /invite_link_hours <cantidad> <horas>"""
+    from app.core.config import settings
+    from app.utils.invite_link import INVITE_PREFIX, encode_invite_payload
+
+    args = context.args
+    if len(args) < 2:
+        await _reply_to_update(
+            update, context,
+            "Uso: /invite_link_hours <cantidad> <horas>\n"
+            "Ej: /invite_link_hours 5 24 — enlace por *cantidad de canciones* y *duración del acceso en horas*. "
+            "Te lo envío por privado."
+        )
+        return
+    try:
+        count = int(args[0])
+        hours = int(args[1])
+        if count < 1 or count > 999:
+            await _reply_to_update(update, context, "La cantidad de canciones debe estar entre 1 y 999.")
+            return
+        if hours < 1 or hours > 87600:
+            await _reply_to_update(update, context, "Las horas deben estar entre 1 y 87600 (máx. ~10 años).")
+            return
+    except ValueError:
+        await _reply_to_update(update, context, "Indica números válidos: cantidad y horas.")
+        return
+    secret = get_invite_link_secret()
+    token = encode_invite_payload(count, secret, duration_hours=hours)
+    if not token:
+        await _reply_to_update(update, context, "Error al generar el enlace (falta instalar 'cryptography').")
+        return
+    bot_username = getattr(settings, "SONGS_BOT_USERNAME", None) or None
+    if not bot_username:
+        me = await context.bot.get_me()
+        bot_username = me.username if me else None
+    if not bot_username:
+        await _reply_to_update(update, context, "No se pudo obtener el nombre del bot de canciones (configura SONGS_BOT_USERNAME o usa este bot).")
+        return
+    link = f"https://t.me/{bot_username}?start={INVITE_PREFIX}{token}"
+    admin_chat_id = update.effective_user.id
+    try:
+        await context.bot.send_message(
+            chat_id=admin_chat_id,
+            text=f"🔗 Enlace por *cantidad + horas* ({count} canciones, {hours} h de acceso):\n\n{link}\n\nQuien lo abra tendrá {count} canción(es) y el acceso durará {hours} hora(s).",
+            parse_mode="Markdown",
+        )
+        if update.effective_chat.id != admin_chat_id:
+            await _reply_to_update(update, context, "Te he enviado el enlace por mensaje privado.")
+        else:
+            await _reply_to_update(update, context, f"Enlace generado ({count} canciones, {hours} h). Revisa el mensaje de arriba.")
     except Exception as e:
         logger.warning(f"Could not send invite link to admin: {e}")
         await _reply_to_update(update, context, "No pude enviarte el enlace por privado. Asegúrate de haber iniciado chat con el bot y vuelve a intentar.")
@@ -1058,8 +1156,10 @@ async def generate_song_lyrics_text(update: Update, context: ContextTypes.DEFAUL
     return await generate_song_finish(update, context, lyrics)
 
 async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, lyrics: str):
+    from app.prompts import normalize_lyrics_sections
     style = context.user_data.get("song_style") or ""
     style = (style or "").strip()
+    lyrics = normalize_lyrics_sections(lyrics or "")
     bus = context.bot_data.get("bus")
 
     if not style:
@@ -1089,7 +1189,7 @@ async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYP
             "command": "acestep_generate",
             "source": f"chat_{update.effective_chat.id}",
             "prompt": style,
-            "lyrics": lyrics or "",
+            "lyrics": lyrics,
             "user_id": user_id,
             "username": username,
             "display_name": display,

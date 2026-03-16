@@ -47,12 +47,15 @@ En la práctica, cada usuario "ve" un comportamiento distinto según su rol (adm
 
 ## Enlace de invitación (sin saber el ID)
 
-Puedes invitar a alguien **sin saber su Telegram ID** usando un enlace:
+Puedes invitar a alguien **sin saber su Telegram ID** usando un enlace. Hay dos comandos:
 
-1. Escribe **`/invite_link 5`** (o el número de canciones que quieras).
+- **`/invite_link <cantidad>`** — Enlace por *cantidad de canciones* (acceso prolongado). Ej: `/invite_link 5`.
+- **`/invite_link_hours <cantidad> <horas>`** — Enlace por *cantidad de canciones* y *duración del acceso en horas*. Ej: `/invite_link_hours 5 24` (5 canciones, acceso 24 h).
+
+1. Escribe **`/invite_link 5`** o **`/invite_link_hours 5 48`** (según quieras solo cantidad o cantidad + horas).
 2. El bot te enviará **solo a ti** (por mensaje privado) un enlace. Si escribes el comando en un grupo, el enlace no se muestra en el grupo.
 3. Envía ese enlace a la persona (por Telegram, WhatsApp, etc.).
-4. Cuando **ella abra el enlace**, se abrirá el bot y se creará automáticamente su invitación con esas canciones. Tú recibirás un aviso: *"El usuario X ha usado tu enlace de invitación y tiene N canciones."*
+4. Cuando **ella abra el enlace**, se abrirá el bot y se creará automáticamente su invitación con esas canciones (y, si usaste `invite_link_hours`, con la duración en horas). Tú recibirás un aviso: *"El usuario X ha usado tu enlace de invitación y tiene N canciones."*
 
 No hace falta que tengas a la persona en la lista del bot ni que sepas su ID.
 
@@ -61,7 +64,8 @@ No hace falta que tengas a la persona en la lista del bot ni que sepas su ID.
 El valor del enlace va **cifrado** (Fernet). Así nadie puede cambiar el número editando la URL. Si se define `INVITE_LINK_SECRET` en el `.env`, se usa para cifrar; si no, se usa el token del bot admin (para que admin codifique y los bots de canciones/portón decodifiquen con el mismo valor).
 
 **Formato del payload (interno, cifrado):**
-- **Canciones:** `{"t": "songs", "c": N}` con opcionales `"exp"` (timestamp de expiración del enlace) y `"n"` (máx. usos del enlace, para uso futuro).
+- **Canciones (solo cantidad):** `{"t": "songs", "c": N}` — acceso prolongado. Opcionales: `"exp"`, `"n"`.
+- **Canciones (cantidad + horas):** `{"t": "songs", "c": N, "h": H}` — el acceso del invitado dura H horas. Opcionales: `"exp"`, `"n"`.
 - **Portón:** `{"t": "gate", "d": N}` (días de acceso), con opcionales `"exp"` y `"n"`.
 
 ---
@@ -82,7 +86,8 @@ Así se separan responsabilidades: este proyecto solo **configura** invitaciones
 
 | Comando | Quién | Descripción |
 |--------|--------|-------------|
-| `/invite_link <cantidad>` | Admin | Enlace de invitación (canciones); te lo envía por privado. |
+| `/invite_link <cantidad>` | Admin | Enlace por cantidad de canciones (acceso prolongado); te lo envía por privado. |
+| `/invite_link_hours <cantidad> <horas>` | Admin | Enlace por cantidad de canciones y duración del acceso en horas; te lo envía por privado. |
 | `/gate_invite_link <días>` | Admin | Enlace de invitación al portón (días); te lo envía por privado. |
 | `/gate_invite <user_id> <días>` | Admin | Invitación al portón por ID y número de días. |
 | `/invite_songs <user_id> <cantidad> [horas]` | Admin | Invitar por ID con cupo de canciones. |

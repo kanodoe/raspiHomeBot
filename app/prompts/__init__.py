@@ -7,6 +7,7 @@ from app.prompts.ace_song import (
     build_user_prompt,
     get_language_name,
     get_system_prompt_style_lyrics,
+    normalize_lyrics_sections,
     parse_style_lyrics_response,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "build_user_prompt",
     "get_language_name",
     "get_system_prompt_style_lyrics",
+    "normalize_lyrics_sections",
     "parse_style_lyrics_response",
 ]

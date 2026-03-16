@@ -21,10 +21,11 @@ def get_system_prompt_style_lyrics(language_name: str) -> str:
         "You must respond ONLY with a valid JSON object with exactly two fields:\n"
         "- \"style\": concise musical style description for generation, in ENGLISH. "
         "Include genre, instruments, tempo, mood (e.g. alternative rock, punchy drums, electric guitar, 120 BPM, intense). "
+        "Also describe structure: how the song begins (intro: sparse, full, fade-in), how it develops (verses, build-up, climax), and how it ends (outro, fade-out, big finish). "
         "Use English tags and descriptors so the music model can use them.\n"
         "- \"lyrics\": the full song lyrics in " + language_name + ". "
-        "Use clear verses and chorus; use line breaks between stanzas. "
-        "The lyrics must be creative and match the style.\n"
+        "Use clear structure: mark every section with square brackets, e.g. [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. "
+        "Use line breaks between stanzas. The lyrics must be creative and match the style.\n"
         "Respond only with the JSON, no extra text, no markdown."
     )
 
@@ -34,9 +35,9 @@ SYSTEM_PROMPT_STYLE_LYRICS = (
     "Your task is to help the user create a song. "
     "You must respond ONLY with a valid JSON object with exactly two fields:\n"
     "- \"style\": concise musical style description in ENGLISH (genre, instruments, tempo, mood). "
-    "Use English tags for the music model.\n"
+    "Include how the song begins (intro), develops (build-up, climax) and ends (outro, fade or big finish). Use English tags for the music model.\n"
     "- \"lyrics\": the full song lyrics in the language requested by the user. "
-    "Use clear verses and chorus; use line breaks between stanzas.\n"
+    "Mark every section with square brackets: [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. Use line breaks between stanzas.\n"
     "Respond only with the JSON, no extra text, no markdown."
 )
 
@@ -46,7 +47,7 @@ SYSTEM_PROMPT_STYLE_ONLY = (
     "The user wants only a musical style description for an instrumental track (no lyrics). "
     "Respond ONLY with a valid JSON object with exactly two fields:\n"
     "- \"style\": concise musical style in ENGLISH. Include genre, instruments, tempo, mood (e.g. cinematic orchestral, 90 BPM, dramatic). "
-    "Use English tags so the music model can use them.\n"
+    "Describe structure: how it begins (intro), develops and ends (outro or climax). Use English tags so the music model can use them.\n"
     "- \"lyrics\": leave empty string \"\".\n"
     "Respond only with the JSON, no extra text, no markdown."
 )
@@ -138,8 +139,87 @@ def _normalize_lyrics(value) -> str:
     if value is None:
         return ""
     if isinstance(value, str):
-        return value.strip()
-    return str(value).strip()
+        return normalize_lyrics_sections(value.strip())
+    return normalize_lyrics_sections(str(value).strip())
+
+
+def normalize_lyrics_sections(lyrics: str) -> str:
+    """
+    Asegura que todas las indicaciones de sección (Verse, Chorus, Intro, etc.)
+    estén entre corchetes []. Si aparecen como "Verse 1:" o "Chorus:", se convierten a [Verse 1], [Chorus].
+    """
+    if not lyrics or not lyrics.strip():
+        return lyrics
+
+    lines = lyrics.split("\n")
+    out = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            out.append(line)
+            continue
+        # Si la línea es solo una etiqueta de sección (con o sin : o -), envolver en []
+        match = re.match(
+            r"^(Intro|Verse\s*\d*|Verso\s*\d*|Chorus|Coro|Bridge|Puente|Outro|Pre-Chorus|Post-Chorus|Interlude|Refrain)(?:\s*[:\-])?\s*$",
+            stripped,
+            re.IGNORECASE,
+        )
+        if match:
+            label = match.group(1).strip()
+            if not (label.startswith("[") and label.endswith("]")):
+                out.append(f"[{label}]")
+            else:
+                out.append(line)
+            continue
+        # Si la línea empieza por etiqueta seguida de dos puntos o guión y luego texto, poner etiqueta en []
+        match = re.match(
+            r"^(Intro|Verse\s*\d*|Verso\s*\d*|Chorus|Coro|Bridge|Puente|Outro|Pre-Chorus|Post-Chorus|Interlude|Refrain)(?:\s*[:\-]\s*)(.*)$",
+            stripped,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if match:
+            label, rest = match.group(1).strip(), match.group(2).strip()
+            if not (label.startswith("[") and label.endswith("]")):
+                out.append(f"[{label}]\n{rest}" if rest else f"[{label}]")
+            else:
+                out.append(line)
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _extract_first_json_object(text: str) -> Optional[str]:
+    """Extrae el primer objeto JSON válido (de { a la } que cierra). Evita capturar de más con .* greedy."""
+    if not text or "{" not in text:
+        return None
+    start = text.index("{")
+    depth = 0
+    in_string = False
+    escape = False
+    quote_char = None
+    for i in range(start, len(text)):
+        c = text[i]
+        if escape:
+            escape = False
+            continue
+        if c == "\\" and in_string:
+            escape = True
+            continue
+        if in_string:
+            if c == quote_char:
+                in_string = False
+            continue
+        if c in ('"', "'"):
+            in_string = True
+            quote_char = c
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
 
 
 def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
@@ -149,19 +229,25 @@ def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
     Tolerates markdown code blocks and extra text; extracts the first JSON object found.
     Si el modelo devuelve "style" como objeto (p. ej. genre, instruments, tempo, mood),
     se convierte a una sola línea para ACE-Step.
+    Si falla el parseo, se usa estilo por defecto y el texto crudo como letra en lugar de mostrar error.
     """
     if not response_text or not response_text.strip():
         return {"style": "Pop rock", "lyrics": ""}
 
+    # Quitar posibles bloques markdown ```json ... ```
+    text = response_text.strip()
+    for pattern in (r"```(?:json)?\s*", r"```\s*$"):
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+    text = text.strip()
+
     try:
-        match = re.search(r"\{.*\}", response_text, re.DOTALL)
-        if match:
-            raw = match.group(0)
+        raw = _extract_first_json_object(text)
+        if raw:
             data = None
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:
-                # Respuesta truncada: intentar cerrar llaves y comillas
+                # Respuesta truncada: intentar cerrar llaves
                 if raw.count("{") > raw.count("}"):
                     for _ in range(5):
                         raw += "}"
@@ -171,14 +257,20 @@ def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
                         except json.JSONDecodeError:
                             continue
             if data is not None:
-                return {
-                    "style": _normalize_style(data.get("style")),
-                    "lyrics": _normalize_lyrics(data.get("lyrics")),
-                }
+                style = _normalize_style(data.get("style"))
+                lyrics = _normalize_lyrics(data.get("lyrics"))
+                if style and "Error" not in style:
+                    return {"style": style, "lyrics": lyrics}
     except (KeyError, TypeError):
         pass
 
+    # Fallback: no mostrar "Error parseando"; usar estilo por defecto y texto como letra si parece contenido
+    style_fallback = "Pop rock"
+    if '"style"' in text or "'style'" in text:
+        m = re.search(r'["\']style["\']\s*:\s*["\']([^"\']+)["\']', text, re.IGNORECASE)
+        if m:
+            style_fallback = _normalize_style(m.group(1)) or style_fallback
     return {
-        "style": "Error parseando respuesta de IA",
-        "lyrics": response_text,
+        "style": style_fallback,
+        "lyrics": text if len(text) > 20 else "",
     }

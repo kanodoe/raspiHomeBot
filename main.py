@@ -16,7 +16,7 @@ from app.database.session import init_db, AsyncSessionLocal
 from app.services.permission_service import PermissionService
 from app.bot.handlers import (
     pc_on, pc_off, pc_status, status_summary, gate_open, gate_entrada, gate_salida, invite, start,
-    invite_link, invite_link_gate, invite_gate, invite_songs, solicitar_canciones, grant_songs, estado_invitaciones,
+    invite_link, invite_link_hours, invite_link_gate, invite_gate, invite_songs, solicitar_canciones, grant_songs, estado_invitaciones,
     save_admin_song_callback,
     end_conversation_on_command,
     telegram_error_handler,
@@ -81,7 +81,8 @@ async def register_commands(bot):
             ])
         if "acestep" in enabled:
             commands.append(BotCommand("generate_song", "Generar una canción (AI)"))
-            commands.append(BotCommand("invite_link", "Generar enlace de invitación (Admin)"))
+            commands.append(BotCommand("invite_link", "Enlace invitación: N canciones (Admin)"))
+            commands.append(BotCommand("invite_link_hours", "Enlace invitación: N canciones + H horas (Admin)"))
             commands.append(BotCommand("invite_songs", "Invitación por cupo de canciones (Admin)"))
             commands.append(BotCommand("grant_songs", "Dar más canciones a un usuario (Admin)"))
             commands.append(BotCommand("request_songs", "Solicitar más cupo al administrador"))
@@ -97,7 +98,8 @@ async def register_commands(bot):
             BotCommand("start", "Ver mi ID y estado del bot"),
             BotCommand("generate_song", "Generar una canción (AI)"),
             BotCommand("request_songs", "Solicitar más cupo al administrador"),
-            BotCommand("invite_link", "Generar enlace de invitación (Admin)"),
+            BotCommand("invite_link", "Enlace: N canciones (Admin)"),
+            BotCommand("invite_link_hours", "Enlace: N canciones + H horas (Admin)"),
             BotCommand("invite_songs", "Invitación por cupo de canciones (Admin)"),
             BotCommand("grant_songs", "Dar más canciones a un usuario (Admin)"),
             BotCommand("invitations_status", "Ver estado de invitaciones (Admin)"),
@@ -194,6 +196,7 @@ def setup_bot():
             application.add_handler(CommandHandler("acestep_stop", acestep_stop), GROUP_COMMANDS)
             application.add_handler(CommandHandler("save_song", acestep_save), GROUP_COMMANDS)
             application.add_handler(CommandHandler("invite_link", invite_link), GROUP_COMMANDS)
+            application.add_handler(CommandHandler("invite_link_hours", invite_link_hours), GROUP_COMMANDS)
             application.add_handler(CommandHandler("invite_songs", invite_songs), GROUP_COMMANDS)
             application.add_handler(CommandHandler("grant_songs", grant_songs), GROUP_COMMANDS)
             application.add_handler(CommandHandler("request_songs", solicitar_canciones), GROUP_COMMANDS)
@@ -227,6 +230,7 @@ def setup_bot():
     elif mode == "songs":
         application.add_handler(CommandHandler("request_songs", solicitar_canciones), GROUP_COMMANDS)
         application.add_handler(CommandHandler("invite_link", invite_link), GROUP_COMMANDS)
+        application.add_handler(CommandHandler("invite_link_hours", invite_link_hours), GROUP_COMMANDS)
         application.add_handler(CommandHandler("invite_songs", invite_songs), GROUP_COMMANDS)
         application.add_handler(CommandHandler("grant_songs", grant_songs), GROUP_COMMANDS)
         application.add_handler(CommandHandler("invitations_status", estado_invitaciones), GROUP_COMMANDS)

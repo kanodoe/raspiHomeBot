@@ -3,8 +3,9 @@ Cifrado del payload de enlaces de invitación para que no se pueda alterar el va
 Formato: start=inv_<token> o start=inv_gate_<token> (token = Fernet(payload_json)).
 
 Payloads soportados:
-- Canciones: {"t": "songs", "c": N} con opcionales "exp" (timestamp), "n" (max_uses).
-- Portón:    {"t": "gate", "d": N} (días) con opcionales "exp", "n".
+- Canciones (solo cantidad): {"t": "songs", "c": N} — N canciones, acceso prolongado (ej. 2 años).
+- Canciones (cantidad + horas): {"t": "songs", "c": N, "h": H} — N canciones, acceso dura H horas.
+- Portón: {"t": "gate", "d": N} (días) con opcionales "exp", "n".
 """
 import base64
 import hashlib
@@ -61,15 +62,19 @@ def encode_invite_payload(
     count: int,
     secret: str,
     *,
+    duration_hours: Optional[int] = None,
     exp_after_hours: Optional[int] = None,
     max_uses: Optional[int] = None,
 ) -> Optional[str]:
     """
     Cifra payload de invitación por canciones.
+    duration_hours: opcional; si se indica, el acceso del invitado expira tras esas horas.
     exp_after_hours: opcional; expiración del enlace (no de la invitación en DB).
     max_uses: opcional; máximo de usos del enlace (aún no aplicado en backend).
     """
     payload: Dict[str, Any] = {"t": "songs", "c": count}
+    if duration_hours is not None and duration_hours > 0:
+        payload["h"] = min(duration_hours, 87600)  # máx 10 años
     if exp_after_hours is not None:
         payload["exp"] = int((datetime.utcnow() + timedelta(hours=exp_after_hours)).timestamp())
     if max_uses is not None:
@@ -78,12 +83,17 @@ def encode_invite_payload(
 
 
 def decode_invite_payload(token_b64: str, secret: str) -> Optional[Dict[str, Any]]:
-    """Descifra token y valida payload de canciones. Devuelve None si inválido o manipulado."""
+    """
+    Descifra token y valida payload de canciones. Devuelve None si inválido o manipulado.
+    El dict puede incluir "h" (duration_hours) si el enlace fue generado con duración en horas.
+    """
     data = _decrypt_payload(token_b64, secret)
     if not data or data.get("t") != "songs":
         return None
     if not isinstance(data.get("c"), int) or data["c"] < 1 or data["c"] > 999:
         return None
+    if "h" in data and (not isinstance(data["h"], int) or data["h"] < 1 or data["h"] > 87600):
+        return None  # horas inválidas (máx 87600 = 10 años)
     if "exp" in data and isinstance(data["exp"], (int, float)) and datetime.utcnow().timestamp() > data["exp"]:
         return None  # Enlace expirado
     return data

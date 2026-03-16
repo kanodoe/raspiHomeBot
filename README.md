@@ -119,7 +119,8 @@ graph TD
 - `/status`: Get a summary of the system state.
 - `/gate_open`: Abrir el portón (usuarios completos o invitados con acceso al portón por días).
 - `/invite <user_id> <hours>h`: (Admin) Acceso temporal a otro usuario.
-- `/invite_link <cantidad>`: (Admin) Enlace de invitación por canciones; te lo envía por privado.
+- `/invite_link <cantidad>`: (Admin) Enlace por *cantidad de canciones* (acceso prolongado); te lo envía por privado.
+- `/invite_link_hours <cantidad> <horas>`: (Admin) Enlace por *cantidad de canciones* y *duración del acceso en horas*; te lo envía por privado.
 - `/gate_invite_link <días>`: (Admin) Enlace de invitación al portón (acceso por N días); te lo envía por privado.
 - `/gate_invite <user_id> <días>`: (Admin) Invitación al portón por ID y días.
 - `/invite_songs <user_id> <cantidad> [horas]`: (Admin only) Invitar por ID a un usuario con un cupo limitado de canciones (solo puede usar `/generate_song`).
@@ -190,7 +191,7 @@ Si prefieres seguir usando el archivo `.bat` directamente, en el equipo remoto (
 
 Puedes invitar a otras personas con un **cupo limitado de canciones**: solo podrán usar el flujo de crear canción (`/generate_song` y `/request_songs`), no el resto de funciones del bot.
 
-- **Canciones:** `/invite_songs <user_id> <cantidad>` o `/invite_link <cantidad>` (enlace por privado). Cuando agoten el cupo, `/request_songs` y tú usas `/grant_songs <user_id> <cantidad>`. **Portón:** `/gate_invite <user_id> <días>` o `/gate_invite_link <días>`; el invitado usa `/gate_open` y el bot reenvía la orden a `GATE_PROXY_URL`.
+- **Canciones:** `/invite_songs <user_id> <cantidad>` o enlaces: `/invite_link <cantidad>` (N canciones, acceso prolongado) o `/invite_link_hours <cantidad> <horas>` (N canciones, acceso H horas). Cuando agoten el cupo, `/request_songs` y tú usas `/grant_songs <user_id> <cantidad>`. **Portón:** `/gate_invite <user_id> <días>` o `/gate_invite_link <días>`; el invitado usa `/gate_open` y el bot reenvía la orden a `GATE_PROXY_URL`.
 - **Avisos al admin:** La primera vez que un invitado use `/generate_song` recibirás un mensaje de “aceptación”. Cada vez que alguien genere una canción, recibirás una **copia en privado**: audio, JSON de la API y botón **“Guardar en servidor”** (solo tú puedes guardar audio + JSON; el usuario solo descarga el MP3).
 - **Estado:** `/invitations_status` muestra todas las invitaciones activas: quién, cuántas canciones ha generado, cuántas le quedan y fecha de expiración.
 
