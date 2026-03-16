@@ -172,6 +172,10 @@ Si prefieres seguir usando el archivo `.bat` directamente, en el equipo remoto (
 
 ## Troubleshooting (Bot en contenedor + Windows remoto)
 
+### El bot no arranca: "BOT_TOKEN was rejected" / 401 Unauthorized
+- **Causa:** El token de Telegram en `.env` es inválido, está revocado o no existe.
+- **Solución:** Obtén un token válido en [@BotFather](https://t.me/BotFather) (crea un bot o usa "API Token" en un bot existente). Ponlo en `.env` como `BOT_TOKEN=...`. Si el token llegó a verse en logs o en público, revócalo en BotFather y genera uno nuevo.
+
 ### La API de ACE-Step o Ollama “no se ve” desde el bot
 - **Causa habitual:** El servicio está escuchando en `127.0.0.1` (solo localhost). Desde el contenedor no se puede conectar.
 - **Solución:** En el PC Windows donde corre ACE-Step, edita `start_api_server.bat` y pon `set HOST=0.0.0.0`. Para Ollama, inicia el servicio con `OLLAMA_HOST=0.0.0.0` (o configúralo en el sistema). Abre el puerto correspondiente (8001 para ACE-Step, 11434 para Ollama) en el Firewall de Windows.

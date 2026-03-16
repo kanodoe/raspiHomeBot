@@ -1,9 +1,11 @@
+import sys
 import uvicorn
 import gc
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from telegram import Update, BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler
+from telegram.error import InvalidToken
 
 from app.core.config import settings
 from app.core.logging import logger
@@ -167,13 +169,20 @@ async def lifespan(app: FastAPI):
     application = setup_bot()
     notifier.bot_app = application
     application.bot_data["bus"] = bus
-    await application.initialize()
-    await register_commands(application.bot)
-    await application.start()
-    await application.updater.start_polling()
-    
+    try:
+        await application.initialize()
+        await register_commands(application.bot)
+        await application.start()
+        await application.updater.start_polling()
+    except InvalidToken:
+        logger.error(
+            "Telegram BOT_TOKEN was rejected by the server (401 Unauthorized). "
+            "Check BOT_TOKEN in .env: it must be valid and not revoked. "
+            "Create or regenerate a token at https://t.me/BotFather."
+        )
+        sys.exit(3)
     app.state.bot_app = application
-    
+
     yield
     
     # Shutdown
