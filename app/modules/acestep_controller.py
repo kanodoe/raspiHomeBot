@@ -77,6 +77,15 @@ class AceStepController(BaseModule):
         
         logger.info(f"AceStepController: Generating song (source: {source}, prompt: {prompt})")
         
+        # Check if API is ready, if not, try to start it
+        if not await AceStepService.is_api_ready():
+            await self.bus.publish("notify.status", {"message": "⏳ La API de ACE-Step no está lista. Intentando iniciarla...", "source": source})
+            if await AceStepService.start_api():
+                await self.bus.publish("notify.status", {"message": "✅ API de ACE-Step iniciada. Enviando tarea...", "source": source})
+            else:
+                await self.bus.publish("notify.error", {"message": "❌ No se pudo iniciar la API de ACE-Step. Abortando generación.", "source": source})
+                return
+
         task_id = await AceStepService.generate_song(prompt, lyrics)
         if not task_id:
             await self.bus.publish("notify.error", {"message": "Error al enviar la tarea de generación.", "source": source})

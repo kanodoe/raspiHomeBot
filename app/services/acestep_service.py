@@ -9,7 +9,18 @@ from app.core.logging import logger
 
 class AceStepService:
     _process: Optional[subprocess.Popen] = None
-    _base_url: str = f"http://{settings.ACESTEP_HOST}:{settings.ACESTEP_PORT}"
+
+    @classmethod
+    def get_base_url(cls) -> str:
+        """
+        Dynamically returns the base URL for the ACE-Step API.
+        If we are in Docker (os.name != 'nt') and the host is set to local,
+        we fallback to settings.PC_IP for reaching the host.
+        """
+        host = settings.ACESTEP_HOST
+        if os.name != 'nt' and host in ("localhost", "127.0.0.1", "0.0.0.0"):
+            host = settings.PC_IP
+        return f"http://{host}:{settings.ACESTEP_PORT}"
 
     @classmethod
     async def start_api(cls) -> bool:
@@ -46,16 +57,18 @@ class AceStepService:
             from app.utils.ssh import run_ssh_command
             logger.info(f"Attempting to start ACE-Step remotely on {ssh_host} via SSH (Windows path on {os.name})...")
             # We use powershell Start-Process to launch it in background and return immediately
-            cmd = f'powershell -Command "Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false && {bat_name}\' -WorkingDirectory \'{ace_path_str}\' -WindowStyle Hidden"'
+            # Using absolute path for bat if possible and ensuring .\\ is used
+            cmd = f'powershell -Command "Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false && .\\{bat_name}\' -WorkingDirectory \'{ace_path_str}\' -WindowStyle Hidden"'
             if await run_ssh_command(cmd, ssh_host):
                 # Wait for it to be ready
-                for _ in range(15):
+                logger.info("SSH command sent. Waiting up to 60s for API to be ready...")
+                for i in range(30):
                     await asyncio.sleep(2)
                     if await cls.is_api_ready(): 
-                        logger.info("ACE-Step API is ready (via SSH).")
+                        logger.info(f"ACE-Step API is ready (via SSH) after {i*2}s.")
                         return True
-                logger.warning("ACE-Step API started via SSH but is not responding yet.")
-                return True # We still return True because it's starting, but the controller could be smarter
+                logger.warning("ACE-Step API started via SSH but is not responding yet (timed out after 60s).")
+                return True # Still return True because it's probably just slow
             return False
 
         if not Path(bat_path_str).exists() and os.name == 'nt':
@@ -137,42 +150,55 @@ class AceStepService:
 
     @classmethod
     async def is_api_ready(cls) -> bool:
+        url = f"{cls.get_base_url()}/docs"
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{cls._base_url}/docs", timeout=1.0)
-                return response.status_code == 200
-        except Exception:
+                # Probing the API. If we get any response, it's listening.
+                response = await client.get(url, timeout=5.0)
+                return True
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout):
             return False
+        except Exception:
+            # Other errors like 405 Method Not Allowed or 404 Not Found 
+            # still mean the server is there.
+            return True
 
     @classmethod
     async def generate_song(cls, prompt: str, lyrics: str = "") -> Optional[str]:
         """
         Submits a task and returns the task_id
         """
-        url = f"{cls._base_url}/release_task"
+        url = f"{cls.get_base_url()}/release_task"
+        # ACE-Step 1.5 supports more parameters. 
+        # For text2music, it often uses 'prompt' as the style/description.
         payload = {
             "prompt": prompt,
             "lyrics": lyrics,
             "thinking": True,
             "use_format": True,
-            "task_type": "text2music"
+            "task_type": "text2music",
+            "gpt_description_prompt": prompt # Sometimes needed alongside prompt
         }
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=10.0)
+                logger.debug(f"Calling ACE-Step API: {url} with payload keys {list(payload.keys())}")
+                response = await client.post(url, json=payload, timeout=30.0)
                 if response.status_code == 200:
                     data = response.json()
                     # ACE-Step wraps response: {"code": 200, "data": {"task_id": "...", ...}}
-                    return data.get("data", {}).get("task_id")
+                    task_id = data.get("data", {}).get("task_id")
+                    if task_id:
+                        return task_id
+                    logger.error(f"ACE-Step API response missing task_id: {data}")
                 else:
-                    logger.error(f"API Error {response.status_code}: {response.text}")
+                    logger.error(f"ACE-Step API Error {response.status_code}: {response.text}")
         except Exception as e:
-            logger.error(f"Error calling generate_song: {e}")
+            logger.error(f"Exception in generate_song calling {url}: {type(e).__name__}: {str(e)}")
         return None
 
     @classmethod
     async def get_task_status(cls, task_id: str) -> Optional[Dict[str, Any]]:
-        url = f"{cls._base_url}/query_result"
+        url = f"{cls.get_base_url()}/query_result"
         payload = {"task_id_list": f'["{task_id}"]'}
         try:
             async with httpx.AsyncClient() as client:
@@ -183,12 +209,12 @@ class AceStepService:
                     if results:
                         return results[0]
         except Exception as e:
-            logger.error(f"Error querying task status: {e}")
+            logger.error(f"Error querying task status at {url}: {e}")
         return None
 
     @classmethod
     async def download_audio(cls, audio_path: str) -> Optional[bytes]:
-        url = f"{cls._base_url}/v1/audio"
+        url = f"{cls.get_base_url()}/v1/audio"
         params = {"path": audio_path}
         try:
             async with httpx.AsyncClient() as client:
@@ -196,5 +222,5 @@ class AceStepService:
                 if response.status_code == 200:
                     return response.content
         except Exception as e:
-            logger.error(f"Error downloading audio: {e}")
+            logger.error(f"Error downloading audio from {url}: {e}")
         return None
