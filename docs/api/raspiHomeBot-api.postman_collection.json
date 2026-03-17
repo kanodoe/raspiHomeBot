@@ -257,6 +257,40 @@
       ]
     },
     {
+      "name": "Logs",
+      "item": [
+        {
+          "name": "List backup logs",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/logs"
+          },
+          "response": [
+            {
+              "name": "List logs Success",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/logs"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"logs\": [\n    \"home_bot_2024-03-17.zip\",\n    \"home_bot_2024-03-16.zip\"\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Download backup log",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/logs/home_bot_2024-03-17.zip"
+          }
+        }
+      ]
+    },
+    {
       "name": "Registration",
       "item": [
         {

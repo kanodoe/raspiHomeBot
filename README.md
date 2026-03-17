@@ -22,6 +22,7 @@ A production-ready home automation system for Raspberry Pi, controlled via Teleg
     - **Ollama**: Local AI for style and lyrics suggestions.
     - **ACE-Step 1.5**: Music generation API integration.
 - **REST API**: Minimal FastAPI endpoints.
+- **Log Rotation and Backup**: Daily log rotation with 7-day ZIP backup retention and API endpoints for remote management.
 - **Lightweight**: Optimized for Raspberry Pi (< 50MB RAM).
     - Uses `__slots__` for all core classes and modules to reduce object memory footprint.
     - Lazy loading of heavy libraries (e.g., `asyncssh`, `wakeonlan`).

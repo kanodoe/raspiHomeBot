@@ -21,6 +21,8 @@ Si no defines `API_KEY`, los endpoints de consulta no exigen autenticación (sol
 | `/pc/on` | POST | Enciende el PC mediante Wake-on-LAN |
 | `/pc/off` | POST | Apaga el PC mediante SSH |
 | `/api/gate/open` | POST | Abre el portón (requiere secret) |
+| `/logs` | GET | Lista los archivos de log de respaldo existentes |
+| `/logs/{filename}` | GET | Descarga un archivo de log comprimido |
 
 ## Endpoints de consulta (solo lectura)
 
