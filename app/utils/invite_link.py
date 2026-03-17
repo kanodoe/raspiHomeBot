@@ -9,6 +9,7 @@ Payloads soportados:
 """
 import base64
 import hashlib
+import hmac
 import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
@@ -25,6 +26,41 @@ def _get_fernet_key(secret: str) -> bytes:
 
 
 def _encrypt_payload(payload: Dict[str, Any], secret: str) -> Optional[str]:
+    """
+    Intenta cifrar con un formato compacto (v2) para no superar los 64 caracteres de Telegram.
+    Si falla, cae a Fernet (legacy).
+    """
+    # Formato compacto v2: v2<tipo><datos>.<hmac>
+    # s: canciones, g: gate
+    # c: count, h: hours, d: days, e: expiration, n: max_uses
+    try:
+        t = payload.get("t")
+        data_str = ""
+        if t == "songs":
+            data_str = f"s{payload['c']}"
+            if "h" in payload:
+                data_str += f"h{payload['h']}"
+        elif t == "gate":
+            data_str = f"g{payload['d']}"
+        
+        if "exp" in payload:
+            data_str += f"e{payload['exp']}"
+        if "n" in payload:
+            data_str += f"n{payload['n']}"
+        
+        if data_str:
+            signature = hmac.new(
+                secret.encode(), data_str.encode(), hashlib.sha256
+            ).digest()
+            # 12 caracteres de HMAC son suficientes para evitar brute force en este contexto
+            sig_b64 = base64.urlsafe_b64encode(signature).decode("ascii")[:12]
+            token_v2 = f"v2{data_str}.{sig_b64}"
+            if len(token_v2) <= 60:  # margen para prefijos
+                return token_v2
+    except Exception as e:
+        logger.debug(f"Compact encode failed, falling back to Fernet: {e}")
+
+    # Fallback a Fernet (legacy, probablemente supere 64 chars)
     try:
         from cryptography.fernet import Fernet
     except ImportError:
@@ -40,12 +76,55 @@ def _encrypt_payload(payload: Dict[str, Any], secret: str) -> Optional[str]:
         return None
 
 
-def _decrypt_payload(token_b64: str, secret: str) -> Optional[Dict[str, Any]]:
+def _decrypt_payload(token_str: str, secret: str) -> Optional[Dict[str, Any]]:
+    # 1. Detectar si es formato v2
+    if token_str.startswith("v2"):
+        try:
+            if "." not in token_str:
+                return None
+            data_part, sig_part = token_str[2:].split(".", 1)
+            
+            # Validar firma
+            expected_sig = hmac.new(
+                secret.encode(), data_part.encode(), hashlib.sha256
+            ).digest()
+            expected_sig_b64 = base64.urlsafe_b64encode(expected_sig).decode("ascii")[:12]
+            
+            if not hmac.compare_digest(sig_part, expected_sig_b64):
+                logger.warning("Invite link signature mismatch")
+                return None
+            
+            # Parsear datos (muy simple: sN, hN, dN, eN, nN)
+            import re
+            res: Dict[str, Any] = {}
+            if data_part.startswith("s"):
+                res["t"] = "songs"
+                m = re.search(r"s(\d+)", data_part)
+                if m: res["c"] = int(m.group(1))
+                m = re.search(r"h(\d+)", data_part)
+                if m: res["h"] = int(m.group(1))
+            elif data_part.startswith("g"):
+                res["t"] = "gate"
+                m = re.search(r"g(\d+)", data_part)
+                if m: res["d"] = int(m.group(1))
+            
+            m = re.search(r"e(\d+)", data_part)
+            if m: res["exp"] = int(m.group(1))
+            m = re.search(r"n(\d+)", data_part)
+            if m: res["n"] = int(m.group(1))
+            
+            return res
+        except Exception as e:
+            logger.debug(f"V2 decrypt failed: {e}")
+            return None
+
+    # 2. Legacy: Fernet
     try:
         from cryptography.fernet import Fernet, InvalidToken
     except ImportError:
         return None
     try:
+        token_b64 = token_str
         padding = 4 - len(token_b64) % 4
         if padding != 4:
             token_b64 += "=" * padding
@@ -54,7 +133,7 @@ def _decrypt_payload(token_b64: str, secret: str) -> Optional[Dict[str, Any]]:
         payload_bytes = f.decrypt(token_b64.encode("ascii"))
         return json.loads(payload_bytes.decode("utf-8"))
     except (InvalidToken, ValueError, TypeError, Exception) as e:
-        logger.debug(f"Invite link decode failed: {e}")
+        logger.debug(f"Invite link decode failed (Fernet): {e}")
         return None
 
 

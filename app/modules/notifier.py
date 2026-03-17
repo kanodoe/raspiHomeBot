@@ -37,7 +37,11 @@ class Notifier(BaseModule):
                  logger.info(f"Sending Telegram message to {chat_id}: {message}")
                  await self.bot_app.bot.send_message(chat_id=chat_id, text=message)
              except Exception as e:
-                 logger.error(f"Failed to send Telegram message: {e}")
+                 # En entornos multi-bot, es normal que un bot no tenga acceso al chat de otro.
+                 if "Chat not found" in str(e) or "bot was blocked" in str(e):
+                     logger.info(f"Could not send notification to {chat_id} (this bot hasn't talked to user): {e}")
+                 else:
+                     logger.error(f"Failed to send Telegram message to {chat_id}: {e}")
 
     async def _send_audio_notification(self, data: Dict[str, Any]):
         audio_bytes = data.get("audio")
