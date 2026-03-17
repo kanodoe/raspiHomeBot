@@ -328,7 +328,7 @@ class GuestRegisterRequest(BaseModel):
     last_name: Optional[str] = None
 
 
-@router.post("/users/register_guest", dependencies=[Depends(require_api_key)])
+@router.post("/register-guest", dependencies=[Depends(require_api_key)])
 async def register_guest(request_data: GuestRegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """
     Registra un usuario como invitado (GUEST) y le asigna una cuota de canciones.

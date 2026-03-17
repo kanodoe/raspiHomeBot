@@ -66,7 +66,7 @@ async def test_register_guest_endpoint(app_test, db_session):
         }
         
         # 3. Llamar al endpoint
-        response = await ac.post("/api/users/register_guest", json=payload, headers=headers)
+        response = await ac.post("/api/register-guest", json=payload, headers=headers)
         
         # 4. Verificar respuesta
         assert response.status_code == 200

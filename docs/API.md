@@ -58,7 +58,7 @@ En `docs/api/raspiHomeBot-api.postman_collection.json` tienes una colección Pos
 - **`GET /api/invitations/{id}/leave-message`**: Devuelve un mensaje de salida para enviar al invitado cuando se revoca la invitación o no se usa, junto con `invitee_telegram_id`, `invitee_display`, etc., para que el admin sepa a quién enviarlo.
 - **`DELETE /api/invitations/{id}`**: Revoca la invitación con ese id (elimina la fila de invitación y la cuota UserQuota asociada). El invitado pierde el acceso. Responde 204 si existía, 404 si no.
 - **`POST /api/invitations/{id}/register-guest`**: Crea o actualiza el usuario (User con role GUEST) para el invitee de esa invitación. Sirve para que un invitado que ya tiene invitación en la BD pero no aparecía en “usuarios registrados” pase a aparecer y pueda usar el sistema (p. ej. invitaciones creadas antes de tener `ensure_guest` al abrir el enlace).
-- **`POST /api/users/register_guest`**: Crea un usuario GUEST y le asigna una cuota de canciones directamente, notificándole por Telegram. Requiere el ID de Telegram y la cantidad de canciones.
+- **`POST /api/register-guest`**: Crea un usuario GUEST y le asigna una cuota de canciones directamente, notificándole por Telegram. Requiere el ID de Telegram y la cantidad de canciones.
 
 ## Otros endpoints
 
