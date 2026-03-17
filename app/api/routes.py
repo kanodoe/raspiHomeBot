@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.session import get_db
 from app.services.wol_service import WOLService
+from app.services.log_service import LogService
 from app.core.config import settings
 
 router = APIRouter()
@@ -59,3 +61,22 @@ async def gate_open_proxy(request: Request, authorization: str | None = Header(d
     from app.services.gate_service import GateService
     await GateService.open_gate()
     return {"message": "Gate opened"}
+
+@router.get("/logs")
+async def list_logs():
+    """Lista los archivos de log de respaldo existentes."""
+    logs = LogService.list_logs()
+    return {"logs": logs}
+
+@router.get("/logs/{filename}")
+async def download_log(filename: str):
+    """Permite descargar un archivo de log comprimido."""
+    file_path = LogService.get_log_path(filename)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="Log file not found")
+    
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type='application/zip'
+    )

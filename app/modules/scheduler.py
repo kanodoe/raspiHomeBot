@@ -24,15 +24,21 @@ class SchedulerModule(BaseModule):
 
     async def _main_loop(self):
         """
-        Periodically publishes tick events.
+        Periodically publishes tick events and manages log rotation.
         """
+        from app.services.log_service import LogService
         count = 0
         while self._running:
             await self.bus.publish("time.tick", {"count": count})
             
-            # Every minute (simplified to 60s)
+            # Every minute (60s)
             if count % 60 == 0:
                 await self.bus.publish("time.minute", {"minute": count // 60})
+                
+                # Check for log rotation once a day at 00:00 (approximate)
+                # Or just every 24 hours (86400 seconds)
+                if (count // 60) % 1440 == 0:
+                    LogService.rotate_logs()
             
             # Cleanup task every hour (3600s)
             if count % 3600 == 0:
