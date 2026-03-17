@@ -2,7 +2,7 @@
 
 ## Base URL
 
-Por defecto el servicio expone la API en `http://localhost:8000`. En producción usa la URL de tu servidor.
+Por defecto el servicio expone la API en `http://192.168.1.220:8000`. En producción usa la URL de tu servidor.
 
 ## Autenticación (opcional)
 
@@ -11,6 +11,16 @@ Si en `.env` defines `API_KEY`, los endpoints de consulta de la base de datos re
 - **X-Api-Key**: valor de `API_KEY`
 
 Si no defines `API_KEY`, los endpoints de consulta no exigen autenticación (solo accesibles en la red donde corre el servicio).
+
+## Endpoints de sistema y control
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/health` | GET | Verifica que el servicio está activo |
+| `/status` | GET | Estado del PC (WOL) y del sistema |
+| `/pc/on` | POST | Enciende el PC mediante Wake-on-LAN |
+| `/pc/off` | POST | Apaga el PC mediante SSH |
+| `/api/gate/open` | POST | Abre el portón (requiere secret) |
 
 ## Endpoints de consulta (solo lectura)
 
@@ -27,20 +37,20 @@ Todos bajo el prefijo `/api`, método GET.
 | `GET /api/quotas` | Lista cuotas por usuario/acción | `telegram_id`, `access_type`, `limit`, `offset` |
 | `GET /api/operations` | Lista operaciones (gate_opened, song_generated) | `telegram_id`, `operation_type`, `since`, `until`, `limit`, `offset` |
 | `GET /api/access-requests` | Lista solicitudes de más acceso | `status`, `telegram_id`, `limit`, `offset` |
-| `POST /api/users/register_guest` | Registra invitado con cuota y le notifica | (Body JSON: `telegram_id`, `song_quota`, `username`?, `first_name`?, `last_name`?) |
+| `POST /api/register-guest` | Registra invitado con cuota y le notifica | (Body JSON: `telegram_id`, `song_quota`, `username`?, `first_name`?, `last_name`?) |
 
 ## Colección Postman / Bruno
 
-En `docs/api/raspiHomeBot-api.postman_collection.json` tienes una colección Postman v2.1 con todas las peticiones de consulta.
+En `docs/api/raspiHomeBot-api.postman_collection.json` tienes una colección Postman v2.1 con todas las peticiones de consulta y control.
 
 ### Cómo importar
 
-1. **Postman**: File → Import → sube el archivo `raspiHomeBot-api.postman_collection.json`. Ajusta las variables de colección `base_url` (p. ej. `http://localhost:8000`) y, si usas API key, `api_key`.
+1. **Postman**: File → Import → sube el archivo `raspiHomeBot-api.postman_collection.json`. Ajusta las variables de colección `base_url` (p. ej. `http://192.168.1.220:8000`) y, si usas API key, `api_key`.
 2. **Bruno**: File → Import → Postman → selecciona el mismo JSON. Configura `base_url` y `api_key` en las variables de la colección.
 
 ### Variables de colección
 
-- **base_url**: URL base del servicio (p. ej. `http://localhost:8000`).
+- **base_url**: URL base del servicio (p. ej. `http://192.168.1.220:8000`).
 - **api_key**: Si está definido `API_KEY` en el servidor, pon aquí el mismo valor y activa el header `X-Api-Key` en cada request (en la colección viene desactivado por defecto para entornos sin API key).
 
 ## Gestión de invitaciones

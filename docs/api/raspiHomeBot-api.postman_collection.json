@@ -5,7 +5,7 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "base_url", "value": "http://192.168.1.220:8000" },
     { "key": "api_key", "value": "" }
   ],
   "item": [
@@ -120,6 +120,158 @@
               { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true }
             ],
             "url": "{{base_url}}/api/access-requests?limit=20&offset=0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/health"
+          },
+          "response": [
+            {
+              "name": "Health OK",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/health"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"status\": \"ok\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "System Status",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/status"
+          },
+          "response": [
+            {
+              "name": "Status Example",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/status"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"pc\": \"on\",\n  \"system\": \"operational\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PC Control",
+      "item": [
+        {
+          "name": "PC ON (WOL)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/pc/on"
+          },
+          "response": [
+            {
+              "name": "PC ON Success",
+              "originalRequest": {
+                "method": "POST",
+                "url": "{{base_url}}/pc/on"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"message\": \"WOL packet sent\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "PC OFF (Shutdown)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/pc/off"
+          },
+          "response": [
+            {
+              "name": "PC OFF Success",
+              "originalRequest": {
+                "method": "POST",
+                "url": "{{base_url}}/pc/off"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Shutdown command sent\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Gate Control",
+      "item": [
+        {
+          "name": "Open Gate",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"secret\": \"YOUR_GATE_PROXY_SECRET\"\n}"
+            },
+            "url": "{{base_url}}/api/gate/open"
+          },
+          "response": [
+            {
+              "name": "Gate Open Success",
+              "originalRequest": {
+                "method": "POST",
+                "url": "{{base_url}}/api/gate/open"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Gate open command sent\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Registration",
+      "item": [
+        {
+          "name": "Register Guest",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{api_key}}", "disabled": true },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telegram_id\": 123456789,\n  \"song_quota\": 5,\n  \"username\": \"jdoe\",\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\"\n}"
+            },
+            "url": "{{base_url}}/api/register-guest"
           }
         }
       ]
