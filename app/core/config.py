@@ -52,6 +52,12 @@ class AppSettings(BaseSettings):
     # Enabled Modules (comma-separated list)
     ENABLED_MODULES: str = "pc,gate,acestep,ollama,zigbee,arlo,scheduler"
 
+    # Plex Settings
+    PLEX_URL: Optional[str] = None
+    PLEX_TOKEN: Optional[str] = None
+    PLEX_MUSIC_SECTION_ID: Optional[str] = None
+    PLEX_REMOTE_MUSIC_PATH: str = r"E:\plex-media-files\musica\musicBotGenerated"
+
     # Multi-bot: admin | songs | gate (un solo modo por proceso)
     BOT_MODE: str = "admin"
     # Username del bot de canciones y del bot de portón (para construir enlaces de invitación desde el admin)

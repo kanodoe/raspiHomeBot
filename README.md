@@ -169,6 +169,12 @@ ACESTEP_PORT=8001
 # Ollama
 OLLAMA_BASE_URL=http://192.168.1.46:11434
 OLLAMA_MODEL=llama3
+
+# Plex (Music generated songs)
+PLEX_URL=http://192.168.1.46:32400
+PLEX_TOKEN=tu_token_de_plex
+PLEX_MUSIC_SECTION_ID=1
+PLEX_REMOTE_MUSIC_PATH=E:\plex-media-files\musica\musicBotGenerated
 ```
 
 ### Recomendación para Producción: ACE-Step en Docker (Host Windows)
@@ -187,6 +193,24 @@ Si prefieres seguir usando el archivo `.bat` directamente, en el equipo remoto (
 4. Ollama generará una propuesta de **Estilo** y **Letra** (formato compatible con ACE-Step).
 5. Puedes **Aceptar**, **Refinar** (pedir cambios específicos) o **Regenerar**.
 6. Una vez aceptado, se envía a ACE-Step. El bot te notificará cuando el audio esté listo y te lo enviará directamente.
+7. **Automático**: Una vez generada con éxito, la canción se procesará para **Plex** (si está configurado): se copiará al servidor remoto, se actualizarán sus metadatos (ID3) incluyendo autor, estilo, BPM y un hash único, y se solicitará un escaneo a la biblioteca de Plex.
+
+## Plex Integration (Music)
+
+El bot puede organizar automáticamente las canciones generadas en tu biblioteca de **Plex Media Server**.
+
+### Características
+- **Copiado Remoto**: La canción se mueve automáticamente a la carpeta de música de Plex en el PC Windows remoto.
+- **Etiquetado Inteligente (ID3)**:
+    - **Título**: `Estilo - BPM - Idioma [hash]`
+    - **Artista**: `RaspiValSong`
+    - **Autor/Compositor**: Nombre del usuario de Telegram que generó la canción.
+- **Auto-scan**: Notifica a la API de Plex para que el nuevo archivo aparezca inmediatamente en tu biblioteca.
+
+### Requisitos
+- **FFmpeg** instalado en el host remoto y disponible en el PATH (para el etiquetado de metadatos).
+- **Plex Token**: Obtén tu token de Plex siguiendo la documentación oficial.
+- **Section ID**: El ID numérico de tu biblioteca de música en Plex (puedes verlo en la URL de Plex Web al entrar en la biblioteca).
 
 ## Invitaciones por cupo de canciones y administrador
 

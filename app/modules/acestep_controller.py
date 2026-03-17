@@ -103,6 +103,7 @@ class AceStepController(BaseModule):
         user_id = data.get("user_id")
         username = data.get("username") or (str(user_id) if user_id else "?")
         display_name = data.get("display_name") or username
+        language = data.get("language")
 
         logger.info(f"AceStepController: Generating song (source: {source}, prompt: {prompt})")
 
@@ -163,7 +164,22 @@ class AceStepController(BaseModule):
                             "prompt": prompt,
                             "lyrics": lyrics,
                             "summary": summary,
+                            "language": language,
                         })
+
+                        # Proceso para Plex
+                        from app.services.plex_music_service import PlexMusicService
+                        asyncio.create_task(PlexMusicService.process_generated_song(
+                            task_id=task_id,
+                            audio_path_on_remote=audio_path,
+                            metadata=status_data,
+                            user_info={
+                                "prompt": prompt,
+                                "display_name": display_name,
+                                "username": username
+                            },
+                            language=language
+                        ))
                         return
                 await self.bus.publish("notify.error", {"message": "Canción generada pero no se pudo obtener el audio.", "source": source})
                 return

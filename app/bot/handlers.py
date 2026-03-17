@@ -1005,6 +1005,8 @@ async def generate_song_mode(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data["song_style"] = suggestions["style"]
         context.user_data["song_lyrics"] = suggestions["lyrics"]
         context.user_data["song_summary"] = suggestions.get("summary", "")
+        if suggestions.get("language"):
+            context.user_data["song_lyrics_lang"] = suggestions["language"]
 
         # Informar al usuario de lo que se va a generar
         summary = context.user_data["song_summary"]
@@ -1263,6 +1265,7 @@ async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYP
             "user_id": user_id,
             "username": username,
             "display_name": display,
+            "language": context.user_data.get("song_lyrics_lang"),
         })
         async with AsyncSessionLocal() as session:
             permission_service = PermissionService(session)

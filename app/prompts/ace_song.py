@@ -59,11 +59,12 @@ SYSTEM_PROMPT_RANDOM_SONG = (
     "Your task is to create a COMPLETELY RANDOM song. "
     "Choose a random musical genre (e.g. heavy metal, k-pop, bossa nova, synthwave, country, etc.), "
     "a random theme/topic, and a random language from around the world (e.g. Japanese, Italian, Spanish, English, etc.). "
-    "You must respond ONLY with a valid JSON object with exactly three fields:\n"
+    "You must respond ONLY with a valid JSON object with exactly four fields:\n"
     "- \"style\": concise musical style description in ENGLISH (genre, instruments, tempo, mood). "
     "Include how the song begins, develops and ends. Use English tags for the music model.\n"
     "- \"lyrics\": the full song lyrics in the randomly chosen language. "
     "Mark sections with square brackets: [Intro], [Verse 1], [Chorus], etc.\n"
+    "- \"language\": the name of the randomly chosen language (e.g. \"Spanish\", \"Japanese\").\n"
     "- \"summary\": A very brief summary in SPANISH about the musical style and what the lyrics are about (1-2 sentences max). "
     "Example: 'Una canción de K-Pop energético sobre la libertad en Coreano' or 'Un jazz suave instrumental sobre una tarde lluviosa'. "
     "Do not give details, just the general idea.\n"
@@ -250,7 +251,7 @@ def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
     Si falla el parseo, se usa estilo por defecto y el texto crudo como letra en lugar de mostrar error.
     """
     if not response_text or not response_text.strip():
-        return {"style": "Pop rock", "lyrics": "", "summary": ""}
+        return {"style": "Pop rock", "lyrics": "", "summary": "", "language": ""}
 
     # Quitar posibles bloques markdown ```json ... ```
     text = response_text.strip()
@@ -278,8 +279,9 @@ def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
                 style = _normalize_style(data.get("style"))
                 lyrics = _normalize_lyrics(data.get("lyrics"))
                 summary = str(data.get("summary") or "").strip()
+                language = str(data.get("language") or "").strip()
                 if style and "Error" not in style:
-                    return {"style": style, "lyrics": lyrics, "summary": summary}
+                    return {"style": style, "lyrics": lyrics, "summary": summary, "language": language}
     except (KeyError, TypeError):
         pass
 
@@ -292,5 +294,6 @@ def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
     return {
         "style": style_fallback,
         "lyrics": text if len(text) > 20 else "",
-        "summary": ""
+        "summary": "",
+        "language": ""
     }
