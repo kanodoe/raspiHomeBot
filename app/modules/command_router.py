@@ -4,8 +4,9 @@ from app.core.logging import logger
 
 class CommandRouter(BaseModule):
     """
-    Routes commands from various sources (API, Telegram, Scheduler) 
-    to specific module events.
+    Módulo encargado de enrutar los comandos provenientes de diversas fuentes
+    (API, Telegram, Scheduler) hacia los eventos específicos de cada módulo.
+    Actúa como un despacho central de comandos.
     """
     __slots__ = ()
 
@@ -13,13 +14,14 @@ class CommandRouter(BaseModule):
         super().__init__(bus)
 
     async def start(self):
-        # We subscribe to general "command" event
+        # Nos suscribimos al evento general "command"
         self.bus.subscribe("command", self._route_command)
         logger.info("CommandRouter module initialized.")
 
     async def _route_command(self, cmd_data: Dict[str, Any]):
         """
-        cmd_data: {"command": "pc_on", "source": "telegram", "args": {}}
+        Analiza un comando genérico y lo traduce a un evento de dominio específico
+        (p. ej. 'pc_on' -> 'cmd.pc.on').
         """
         command = cmd_data.get("command")
         logger.info(f"Routing command: {command} from {cmd_data.get('source')}")

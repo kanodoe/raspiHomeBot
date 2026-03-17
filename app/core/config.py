@@ -29,7 +29,13 @@ class AppSettings(BaseSettings):
     SSH_USER: str
     SSH_KEY_PATH: str
     ADMIN_TELEGRAM_ID: int
-    DATABASE_URL: str = "sqlite+aiosqlite:///./home_automation.db"
+    DATABASE_URL: Optional[str] = None
+    DB_PATH: str = "./home_automation.db"
+
+    def get_database_url(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        return f"sqlite+aiosqlite:///{self.DB_PATH}"
 
     # ACE-Step Settings
     ACESTEP_PATH: str = r"C:\path\to\ACE-Step-1.5"

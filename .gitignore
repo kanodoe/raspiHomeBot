@@ -2,4 +2,7 @@
 .idea
 
 /logs/home_bot.log
-home_automation.db
+*.db
+*.db-journal
+*.db-shm
+*.db-wal

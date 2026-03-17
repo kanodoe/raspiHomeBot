@@ -2,14 +2,15 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Header, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, Response, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import get_db, AsyncSessionLocal
-from app.database.models import User, Invitation, UserQuota, UserOperation, AccessRequest
+from app.database.models import User, Invitation, UserQuota, UserOperation, AccessRequest, UserRole
 from app.core.config import settings
 from app.services.permission_service import PermissionService
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api", tags=["db"])
 
@@ -316,4 +317,65 @@ async def list_access_requests(
         ],
         "limit": limit,
         "offset": offset,
+    }
+
+
+class GuestRegisterRequest(BaseModel):
+    telegram_id: int
+    song_quota: int
+    username: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+
+@router.post("/users/register_guest", dependencies=[Depends(require_api_key)])
+async def register_guest(request_data: GuestRegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Registra un usuario como invitado (GUEST) y le asigna una cuota de canciones.
+    También le notifica por Telegram si el bot está activo.
+    """
+    perm_service = PermissionService(db)
+    
+    # 1. Crear/asegurar el usuario
+    user = await perm_service.ensure_guest(
+        telegram_id=request_data.telegram_id,
+        username=request_data.username,
+        first_name=request_data.first_name,
+        last_name=request_data.last_name
+    )
+    
+    # 2. Asignar la cuota de canciones
+    # Usamos settings.ADMIN_TELEGRAM_ID como el 'invitador' por defecto para el sistema
+    success = await perm_service.add_song_quota(
+        admin_id=settings.ADMIN_TELEGRAM_ID,
+        invitee_telegram_id=request_data.telegram_id,
+        count=request_data.song_quota,
+        invitee_username=request_data.username
+    )
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="Error al asignar la cuota de canciones")
+
+    # 3. Notificar al usuario por el bus de eventos
+    bus = getattr(request.app.state, "bus", None)
+    if bus:
+        message = (
+            f"✅ ¡Hola! Has sido dado de alta en el sistema.\n\n"
+            f"Se te ha asignado un cupo de {request_data.song_quota} canciones.\n"
+            f"Ya puedes usar los comandos del bot."
+        )
+        await bus.publish("notify.info", {
+            "message": message,
+            "source": f"chat_{request_data.telegram_id}"
+        })
+
+    return {
+        "status": "success",
+        "message": "Usuario registrado y cuota asignada",
+        "user": {
+            "telegram_id": user.telegram_id,
+            "username": user.username,
+            "role": user.role
+        },
+        "quota_added": request_data.song_quota
     }

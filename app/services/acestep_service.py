@@ -11,14 +11,19 @@ from app.core.config import settings
 from app.core.logging import logger
 
 class AceStepService:
+    """
+    Servicio para interactuar con la API de ACE-Step 1.5 (generación de música).
+    Permite arrancar/parar la API localmente o vía SSH en un equipo Windows,
+    enviar tareas de generación, consultar estado y descargar/guardar resultados.
+    """
     _process: Optional[subprocess.Popen] = None
 
     @classmethod
     def get_base_url(cls) -> str:
         """
-        Dynamically returns the base URL for the ACE-Step API.
-        If we are in Docker (os.name != 'nt') and the host is set to local,
-        we fallback to settings.PC_IP for reaching the host.
+        Devuelve la URL base de la API de ACE-Step.
+        Si se ejecuta en Docker y la configuración apunta a localhost, 
+        intenta resolver la IP del host Windows (PC_IP).
         """
         host = settings.ACESTEP_HOST
         if os.name != 'nt' and host in ("localhost", "127.0.0.1", "0.0.0.0"):
@@ -28,9 +33,10 @@ class AceStepService:
     @classmethod
     async def start_api(cls) -> Tuple[bool, Optional[str]]:
         """
-        Start the ACE-Step API. Returns (success, error_message).
-        If the port is already in use on the remote host, we do NOT kill the process;
-        we return False with a message asking the user to set HOST=0.0.0.0 in start_api_server.bat.
+        Inicia la API de ACE-Step.
+        Si se detecta que el puerto ya está en uso en el host remoto, no mata el proceso
+        y devuelve un error indicando que se debe configurar el servidor para escucha externa.
+        Soporta ejecución local (Windows) o remota vía SSH (desde Docker/Linux).
         """
         if await cls.is_api_ready():
             logger.info("ACE-Step API is already running.")
@@ -159,6 +165,11 @@ class AceStepService:
 
     @classmethod
     async def stop_api(cls) -> bool:
+        """
+        Detiene la API de ACE-Step.
+        Si se inició vía SSH, envía el comando de cierre al host remoto.
+        Si se inició localmente, mata el árbol de procesos.
+        """
         # Check if we should use SSH to stop
         is_windows_path = ":" in settings.ACESTEP_PATH or settings.ACESTEP_PATH.startswith("\\")
         use_ssh = os.name != 'nt' and is_windows_path
@@ -213,6 +224,10 @@ class AceStepService:
 
     @classmethod
     async def is_api_ready(cls) -> bool:
+        """
+        Verifica si la API de ACE-Step está lista para recibir peticiones.
+        Realiza pruebas HTTP contra los endpoints base.
+        """
         base_url = cls.get_base_url()
         # Try a few endpoints that might be available
         is_http_ready = False
@@ -253,7 +268,9 @@ class AceStepService:
     @classmethod
     async def generate_song(cls, prompt: str, lyrics: str = "") -> Optional[str]:
         """
-        Submits a task and returns the task_id
+        Envía una solicitud de generación de música a la API de ACE-Step.
+        Devuelve el `task_id` si la tarea fue aceptada correctamente.
+        `prompt` se utiliza como descripción del estilo y `lyrics` como letra de la canción.
         """
         url = f"{cls.get_base_url()}/release_task"
         # ACE-Step 1.5 supports more parameters. 
@@ -285,6 +302,10 @@ class AceStepService:
 
     @classmethod
     async def get_task_status(cls, task_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Consulta el estado de una tarea de generación mediante su `task_id`.
+        Normaliza el estado (processing, completed, failed) y extrae la ruta del audio si está disponible.
+        """
         url = f"{cls.get_base_url()}/query_result"
         payload = {"task_id_list": f'["{task_id}"]'}
         try:
@@ -331,6 +352,9 @@ class AceStepService:
 
     @classmethod
     async def download_audio(cls, audio_path: str) -> Optional[bytes]:
+        """
+        Descarga el archivo de audio generado desde la API de ACE-Step.
+        """
         url = f"{cls.get_base_url()}/v1/audio"
         params = {"path": audio_path}
         try:
@@ -345,8 +369,9 @@ class AceStepService:
     @classmethod
     async def save_song_locally(cls, task_id: str, audio_bytes: bytes, metadata: Dict[str, Any]) -> bool:
         """
-        Saves audio and metadata JSON of the song.
-        Requirement: Save on the computer where ACE runs, in C:\telegram_songs.
+        Guarda el archivo de audio (.mp3) y los metadatos (.json) en el sistema de archivos.
+        Si la API se ejecuta en un equipo remoto vía SSH, utiliza SSH para guardar los archivos 
+        directamente en dicho equipo (normalmente en C:\\telegram_songs).
         """
         target_dir = settings.ACESTEP_SAVE_PATH
         # Ensure target_dir is a Windows-style path for consistency if needed

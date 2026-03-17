@@ -249,6 +249,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Saludo según tipo de usuario (evitar confundir a invitados con mensaje de admin)
     async with AsyncSessionLocal() as session:
         permission_service = PermissionService(session)
+        
+        # Actualizar datos del usuario por si viene de una invitación pre-creada o cambio en Telegram
+        user = update.effective_user
+        await permission_service.ensure_guest(
+            user_id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name
+        )
+
         role = await permission_service.get_user_role(user_id)
         remaining = await permission_service.get_remaining_songs(user_id)
         bot_mode = getattr(settings, "BOT_MODE", "admin").strip().lower()
@@ -259,7 +269,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await _reply_to_update(
                     update, context,
                     "Bienvenido al bot de canciones.\n\n"
-                    "Este bot es solo para invitados. Necesitas un *enlace de invitación* del administrador para obtener cupo de canciones.\n\n"
+                    "Este bot es solo para invitados. Necesitas un enlace de invitación del administrador para obtener cupo de canciones.\n\n"
                     f"Tu Telegram ID es: `{user_id}` (por si el administrador necesita invitarte).",
                     parse_mode="Markdown",
                 )
@@ -823,6 +833,15 @@ async def grant_songs(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     notes=f"+{count} canciones",
                 )
         await update.message.reply_text(f"Se han añadido {count} canciones al usuario {invitee_id}.")
+        
+        # Notificar al usuario solicitante
+        try:
+            await context.bot.send_message(
+                chat_id=invitee_id,
+                text=f"✅ El administrador ha autorizado tu solicitud: se han añadido {count} canciones a tu cuenta."
+            )
+        except Exception as e:
+            logger.warning(f"Could not notify user {invitee_id} of song grant: {e}")
     except (ValueError, IndexError):
         await update.message.reply_text("Argumentos inválidos. Uso: /grant_songs <user_id> <cantidad>")
 
@@ -949,9 +968,9 @@ async def generate_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             return ConversationHandler.END
 
     # Limpiar estado de intentos anteriores
-    for key in ("song_style", "song_lyrics", "refine_target", "style_only", "song_theme", "song_lyrics_lang"):
+    for key in ("song_style", "song_lyrics", "song_summary", "refine_target", "style_only", "song_theme", "song_lyrics_lang"):
         context.user_data.pop(key, None)
-    reply_keyboard = [["Manual", "Asistido por IA"]]
+    reply_keyboard = [["Manual", "Asistido por IA", "Al azar"]]
     await update.message.reply_text(
         "¡Genial! Vamos a crear una canción. ¿Cómo quieres proceder?",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
@@ -960,6 +979,45 @@ async def generate_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def generate_song_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = update.message.text.lower()
+    if "azar" in mode:
+        if not await OllamaService.is_available():
+            await update.message.reply_text(
+                "Ollama no está activo. Intentando iniciarlo para la generación aleatoria…"
+            )
+            success, error_msg = await OllamaService.start_ollama()
+            if not success or not await OllamaService.is_available():
+                await update.message.reply_text(
+                    "No se pudo iniciar Ollama para el modo aleatorio. Intenta de nuevo más tarde o usa modo manual."
+                    + (f"\n\n{error_msg}" if error_msg else "")
+                )
+                return ConversationHandler.END
+
+        await update.message.reply_text("Generando canción aleatoria con IA... Por favor espera.")
+        suggestions = await OllamaService.suggest_random_song()
+        if not suggestions:
+            await update.message.reply_text("No se pudo generar la sugerencia aleatoria. Intenta de nuevo.")
+            return ConversationHandler.END
+
+        if suggestions.get("error") == "model_not_found":
+            await update.message.reply_text("❌ El modelo de Ollama no está configurado correctamente.")
+            return ConversationHandler.END
+
+        context.user_data["song_style"] = suggestions["style"]
+        context.user_data["song_lyrics"] = suggestions["lyrics"]
+        context.user_data["song_summary"] = suggestions.get("summary", "")
+
+        # Informar al usuario de lo que se va a generar
+        summary = context.user_data["song_summary"]
+        info_text = "🎲 *Modo Aleatorio*\n\n"
+        if summary:
+            info_text += f"*{summary}*\n\n"
+        info_text += "Enviando a generación inmediatamente..."
+        
+        await update.message.reply_text(info_text, parse_mode="Markdown")
+        
+        # Saltamos a finish directamente
+        return await generate_song_finish(update, context, suggestions["lyrics"])
+
     if "ia" in mode:
         if not await OllamaService.is_available():
             await update.message.reply_text(
@@ -1168,6 +1226,7 @@ async def generate_song_lyrics_text(update: Update, context: ContextTypes.DEFAUL
 async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, lyrics: str):
     from app.prompts import normalize_lyrics_sections
     style = context.user_data.get("song_style") or ""
+    summary = context.user_data.get("song_summary") or ""
     style = (style or "").strip()
     lyrics = normalize_lyrics_sections(lyrics or "")
     bus = context.bot_data.get("bus")
@@ -1200,6 +1259,7 @@ async def generate_song_finish(update: Update, context: ContextTypes.DEFAULT_TYP
             "source": f"chat_{update.effective_chat.id}",
             "prompt": style,
             "lyrics": lyrics,
+            "summary": summary,
             "user_id": user_id,
             "username": username,
             "display_name": display,

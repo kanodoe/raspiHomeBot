@@ -8,10 +8,19 @@ from app.database.models import User, Invitation, UserQuota, UserRole
 from app.utils.user_display import format_invitee_from_invitation
 
 class PermissionService:
+    """
+    Servicio encargado de gestionar los permisos y roles de los usuarios,
+    así como las invitaciones y cuotas de acceso (canciones y portón).
+    """
     def __init__(self, db: AsyncSession):
         self.db = db
 
     async def get_user_role(self, telegram_id: int) -> UserRole:
+        """
+        Obtiene el rol de un usuario basado en su telegram_id.
+        Si no existe el usuario, pero tiene una invitación válida, se le considera GUEST.
+        De lo contrario, devuelve el rol del usuario o GUEST por defecto.
+        """
         stmt = select(User).where(User.telegram_id == telegram_id)
         result = await self.db.execute(stmt)
         user = result.scalar_one_or_none()
@@ -35,6 +44,11 @@ class PermissionService:
         return UserRole.GUEST
 
     async def is_authorized(self, telegram_id: int, required_role: UserRole) -> bool:
+        """
+        Verifica si un usuario tiene autorización para un rol específico o superior.
+        ADMIN > USER > GUEST.
+        También verifica si el usuario tiene cuotas activas si el rol requerido es USER o GUEST.
+        """
         role = await self.get_user_role(telegram_id)
         
         # Hierarchical roles: ADMIN > USER > GUEST
@@ -68,6 +82,9 @@ class PermissionService:
         return current_priority >= required_priority
 
     async def create_invitation(self, inviter_id: int, invitee_id: int, invitee_username: str, duration_hours: int):
+        """
+        Crea o actualiza una invitación general por tiempo (legacy).
+        """
         expiration = datetime.utcnow() + timedelta(hours=duration_hours)
         invitation = Invitation(
             inviter_id=inviter_id,
@@ -90,11 +107,17 @@ class PermissionService:
         return invitation
 
     async def cleanup_expired_invitations(self):
+        """
+        Elimina todas las invitaciones cuya fecha de expiración haya pasado.
+        """
         stmt = delete(Invitation).where(Invitation.expiration_time <= datetime.utcnow())
         await self.db.execute(stmt)
         await self.db.commit()
 
     async def ensure_admin(self, admin_id: int, username: Optional[str] = None, first_name: Optional[str] = None, last_name: Optional[str] = None):
+        """
+        Asegura que el administrador principal existe en la base de datos con los datos proporcionados.
+        """
         stmt = select(User).where(User.telegram_id == admin_id)
         result = await self.db.execute(stmt)
         user = result.scalar_one_or_none()
@@ -118,7 +141,10 @@ class PermissionService:
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
     ) -> User:
-        """Crea o actualiza un usuario con role GUEST para que aparezca en usuarios registrados y los permisos funcionen por User."""
+        """
+        Crea o actualiza un usuario con role GUEST para que aparezca en usuarios registrados
+        y los permisos funcionen por User.
+        """
         stmt = select(User).where(User.telegram_id == telegram_id)
         result = await self.db.execute(stmt)
         user = result.scalar_one_or_none()
@@ -186,7 +212,10 @@ class PermissionService:
         return None
 
     async def can_generate_song(self, telegram_id: int) -> bool:
-        """True si es USER/ADMIN o tiene cupo de canciones (UserQuota o Invitation legacy)."""
+        """
+        Verifica si un usuario puede generar una canción.
+        True si es USER/ADMIN o tiene cupo de canciones activo (UserQuota o Invitation legacy).
+        """
         role = await self.get_user_role(telegram_id)
         if role in (UserRole.USER, UserRole.ADMIN):
             return True
@@ -195,12 +224,23 @@ class PermissionService:
         return await self.get_song_invitation(telegram_id) is not None
 
     async def consume_song_quota(self, telegram_id: int) -> bool:
-        """Resta 1 al cupo. Primero UserQuota, luego Invitation legacy. Devuelve True si se descontó."""
+        """
+        Resta 1 al cupo de canciones del usuario. 
+        Mantiene sincronizados UserQuota e Invitation legacy.
+        Devuelve True si se pudo descontar.
+        """
+        # Intentar descontar de UserQuota
         quota = await self._get_song_quota(telegram_id)
         if quota:
             quota.songs_used += 1
+            # Sincronizar con Invitation legacy si existe
+            inv = await self.get_song_invitation(telegram_id)
+            if inv:
+                inv.songs_used = quota.songs_used
             await self.db.commit()
             return True
+        
+        # Si no hay UserQuota activo, intentar con Invitation legacy
         inv = await self.get_song_invitation(telegram_id)
         if not inv:
             return False
@@ -209,14 +249,28 @@ class PermissionService:
         return True
 
     async def get_remaining_songs(self, telegram_id: int) -> Optional[int]:
-        """Canciones restantes; primero UserQuota, luego Invitation legacy."""
-        quota = await self._get_song_quota(telegram_id)
+        """
+        Calcula la cantidad de canciones restantes para un usuario.
+        Busca en UserQuota y Invitation (legacy), devolviendo 0 si el cupo está agotado.
+        Si no tiene ninguna invitación o cuota registrada, devuelve None.
+        """
+        # Intentar con UserQuota (aunque esté agotado)
+        stmt_q = select(UserQuota).where(
+            and_(UserQuota.telegram_id == telegram_id, UserQuota.access_type == "song")
+        )
+        quota = (await self.db.execute(stmt_q)).scalar_one_or_none()
         if quota:
             return max(0, (quota.song_quota or 0) - quota.songs_used)
-        inv = await self.get_song_invitation(telegram_id)
-        if not inv:
-            return None
-        return max(0, (inv.song_quota or 0) - inv.songs_used)
+            
+        # Intentar con Invitation legacy (aunque esté agotada)
+        stmt_i = select(Invitation).where(
+            and_(Invitation.invitee_telegram_id == telegram_id, Invitation.song_quota.isnot(None))
+        )
+        inv = (await self.db.execute(stmt_i)).scalar_one_or_none()
+        if inv:
+            return max(0, (inv.song_quota or 0) - inv.songs_used)
+            
+        return None
 
     async def create_song_invitation(
         self,
@@ -228,10 +282,24 @@ class PermissionService:
         invitee_first_name: Optional[str] = None,
         invitee_last_name: Optional[str] = None,
     ) -> Invitation:
-        """Crea o actualiza invitación (evento) y UserQuota para canciones."""
+        """
+        Crea o actualiza una invitación específica para generación de canciones.
+        Establece tanto la invitación (como registro histórico) como la cuota (UserQuota).
+        También asegura que el usuario esté registrado como GUEST.
+        """
         now = datetime.utcnow()
         duration = duration_hours if duration_hours is not None else 24 * 365 * 2
         expiration = now + timedelta(hours=duration)
+        
+        # 1. Asegurar que el usuario existe en la tabla users
+        await self.ensure_guest(
+            telegram_id=invitee_id,
+            username=invitee_username,
+            first_name=invitee_first_name,
+            last_name=invitee_last_name
+        )
+
+        # 2. Gestionar Invitación (legacy/registro de evento)
         stmt = select(Invitation).where(Invitation.invitee_telegram_id == invitee_id)
         result = await self.db.execute(stmt)
         existing = result.scalar_one_or_none()
@@ -291,7 +359,16 @@ class PermissionService:
         count: int,
         invitee_username: Optional[str] = None,
     ) -> bool:
-        """Añade count canciones al cupo (UserQuota o Invitation legacy). Devuelve True si ok."""
+        """
+        Añade una cantidad específica de canciones al cupo de un usuario.
+        Si el usuario no tiene cuota previa, se le crea una nueva con una duración de 2 años.
+        """
+        # Asegurar que el usuario existe
+        await self.ensure_guest(
+            telegram_id=invitee_telegram_id,
+            username=invitee_username
+        )
+
         stmt_q = select(UserQuota).where(
             and_(UserQuota.telegram_id == invitee_telegram_id, UserQuota.access_type == "song")
         )
@@ -468,9 +545,22 @@ class PermissionService:
         invitee_first_name: Optional[str] = None,
         invitee_last_name: Optional[str] = None,
     ) -> Invitation:
-        """Crea o actualiza invitación (evento) y UserQuota de portón (acceso por días)."""
+        """
+        Crea o actualiza una invitación para el control del portón.
+        Establece la expiración en días a partir de ahora y asegura que el usuario sea GUEST.
+        """
         now = datetime.utcnow()
         expiration = now + timedelta(days=days)
+        
+        # 1. Asegurar que el usuario existe en la tabla users
+        await self.ensure_guest(
+            telegram_id=invitee_id,
+            username=invitee_username,
+            first_name=invitee_first_name,
+            last_name=invitee_last_name
+        )
+
+        # 2. Gestionar Invitación
         stmt = select(Invitation).where(Invitation.invitee_telegram_id == invitee_id)
         result = await self.db.execute(stmt)
         existing = result.scalar_one_or_none()

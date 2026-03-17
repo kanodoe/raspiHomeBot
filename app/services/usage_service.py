@@ -9,6 +9,10 @@ from app.database.models import UserOperation, AccessRequest, AccessRequestStatu
 
 
 class UsageService:
+    """
+    Servicio para registrar y consultar las operaciones de los usuarios (logs)
+    y las solicitudes de acceso (pedir más canciones).
+    """
     def __init__(self, db: AsyncSession):
         self.db = db
 
@@ -20,6 +24,9 @@ class UsageService:
         metadata: Optional[str] = None,
         display_name: Optional[str] = None,
     ) -> UserOperation:
+        """
+        Registra una operación realizada por un usuario en la base de datos.
+        """
         op = UserOperation(
             telegram_id=telegram_id,
             operation_type=operation_type,
@@ -37,6 +44,9 @@ class UsageService:
         request_type: str,
         requested_value: Optional[str] = None,
     ) -> AccessRequest:
+        """
+        Crea una solicitud de acceso (p. ej. más canciones) pendiente de aprobación.
+        """
         req = AccessRequest(
             telegram_id=telegram_id,
             request_type=request_type,
@@ -55,6 +65,9 @@ class UsageService:
         responded_by: int,
         notes: Optional[str] = None,
     ) -> Optional[AccessRequest]:
+        """
+        Marca una solicitud de acceso como aprobada o denegada.
+        """
         stmt = select(AccessRequest).where(AccessRequest.id == request_id)
         result = await self.db.execute(stmt)
         req = result.scalar_one_or_none()
@@ -75,6 +88,9 @@ class UsageService:
         telegram_id: Optional[int] = None,
         limit: int = 100,
     ) -> List[AccessRequest]:
+        """
+        Lista las solicitudes de acceso, opcionalmente filtradas por estado o usuario.
+        """
         stmt = select(AccessRequest).order_by(AccessRequest.requested_at.desc())
         if status:
             stmt = stmt.where(AccessRequest.status == status)

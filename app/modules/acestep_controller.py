@@ -31,7 +31,10 @@ class AceStepController(BaseModule):
         logger.info("AceStepController module initialized.")
 
     async def _handle_cache_for_admin(self, data: Dict[str, Any]):
-        """Guarda la última canción enviada al admin para que pueda usar /save_song."""
+        """
+        Guarda temporalmente la última canción generada para que el administrador 
+        pueda usar /save_song sin necesidad de volver a generarla.
+        """
         admin_chat_id = data.get("admin_chat_id")
         if admin_chat_id is None:
             return
@@ -96,6 +99,7 @@ class AceStepController(BaseModule):
         source = data.get("source")
         prompt = data.get("prompt")
         lyrics = data.get("lyrics", "")
+        summary = data.get("summary", "")
         user_id = data.get("user_id")
         username = data.get("username") or (str(user_id) if user_id else "?")
         display_name = data.get("display_name") or username
@@ -137,11 +141,16 @@ class AceStepController(BaseModule):
                             "metadata": status_data,
                             "task_id": task_id
                         }
+                        
+                        caption = f"¡Aquí tienes tu canción!\nEstilo: {prompt}"
+                        if summary:
+                            caption = f"¡Aquí tienes tu canción!\n\n🤖 *Resumen:* {summary}\n\n*Estilo:* {prompt}"
+                            
                         await self.bus.publish("notify.audio", {
                             "audio": audio_bytes,
                             "filename": f"song_{task_id}.mp3",
                             "source": source,
-                            "caption": f"¡Aquí tienes tu canción!\nEstilo: {prompt}"
+                            "caption": caption
                         })
                         await self.bus.publish("notify.admin.song_generated", {
                             "audio": audio_bytes,
@@ -153,6 +162,7 @@ class AceStepController(BaseModule):
                             "display_name": display_name,
                             "prompt": prompt,
                             "lyrics": lyrics,
+                            "summary": summary,
                         })
                         return
                 await self.bus.publish("notify.error", {"message": "Canción generada pero no se pudo obtener el audio.", "source": source})
@@ -163,6 +173,10 @@ class AceStepController(BaseModule):
                 return
 
     async def _handle_generate(self, data: Dict[str, Any]):
+        """
+        Recibe solicitudes de generación de canciones y las encola.
+        Si no hay tareas en curso, inicia el procesamiento inmediato.
+        """
         source = data.get("source")
 
         if self._generation_processing:
@@ -205,6 +219,10 @@ class AceStepController(BaseModule):
                     self._generation_processing = False
         
     async def _handle_save(self, data: Dict[str, Any]):
+        """
+        Maneja la solicitud de guardado persistente de una canción en el servidor local/remoto.
+        Requiere que la canción esté en el cache de `last_generated_songs`.
+        """
         source = data.get("source")
         song_data = self.last_generated_songs.get(source)
         

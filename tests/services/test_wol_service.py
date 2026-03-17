@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from app.services.wol_service import WOLService
 
-@patch("app.services.wol_service.send_magic_packet")
+@patch("wakeonlan.send_magic_packet")
 def test_send_wol_success(mock_send):
     # Setup
     result = WOLService.send_wol()
@@ -11,7 +11,7 @@ def test_send_wol_success(mock_send):
     assert result is True
     mock_send.assert_called_once()
 
-@patch("app.services.wol_service.send_magic_packet")
+@patch("wakeonlan.send_magic_packet")
 def test_send_wol_failure(mock_send):
     # Setup
     mock_send.side_effect = Exception("Broadcast failed")

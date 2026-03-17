@@ -93,3 +93,81 @@ async def test_cleanup_expired_invitations(db_session):
     stmt = select(Invitation).where(Invitation.invitee_telegram_id == 777)
     result = await db_session.execute(stmt)
     assert result.scalar_one_or_none() is None
+
+@pytest.mark.asyncio
+async def test_create_song_invitation(db_session):
+    service = PermissionService(db_session)
+    # Test creating a song invitation
+    invitation = await service.create_song_invitation(
+        inviter_id=123,
+        invitee_id=789,
+        invitee_username="song_guest",
+        song_quota=5,
+        duration_hours=24
+    )
+    
+    assert invitation.invitee_telegram_id == 789
+    assert invitation.song_quota == 5
+    assert (invitation.expiration_time - datetime.utcnow()) > timedelta(hours=23)
+    
+    # Verify user was created as GUEST
+    role = await service.get_user_role(789)
+    assert role == UserRole.GUEST
+    
+    # Verify quota was created
+    remaining = await service.get_remaining_songs(789)
+    assert remaining == 5
+
+@pytest.mark.asyncio
+async def test_consume_song_quota(db_session):
+    service = PermissionService(db_session)
+    await service.create_song_invitation(
+        inviter_id=123,
+        invitee_id=789,
+        invitee_username="song_guest",
+        song_quota=2
+    )
+    
+    # Consume one
+    success = await service.consume_song_quota(789)
+    assert success is True
+    assert await service.get_remaining_songs(789) == 1
+    
+    # Consume another
+    success = await service.consume_song_quota(789)
+    assert success is True
+    assert await service.get_remaining_songs(789) == 0
+    
+    # Try to consume one more
+    success = await service.consume_song_quota(789)
+    assert success is False
+
+@pytest.mark.asyncio
+async def test_add_song_quota(db_session):
+    service = PermissionService(db_session)
+    # Start with 2 songs
+    await service.create_song_invitation(
+        inviter_id=123,
+        invitee_id=789,
+        invitee_username="song_guest",
+        song_quota=2
+    )
+    
+    # Add 3 more
+    await service.add_song_quota(admin_id=123, invitee_telegram_id=789, count=3)
+    
+    assert await service.get_remaining_songs(789) == 5
+
+@pytest.mark.asyncio
+async def test_create_gate_invitation(db_session):
+    service = PermissionService(db_session)
+    await service.create_gate_invitation(
+        inviter_id=123,
+        invitee_id=999,
+        invitee_username="gate_guest",
+        days=7
+    )
+    
+    assert await service.can_open_gate(999) is True
+    # Should not have song access
+    assert await service.can_generate_song(999) is False

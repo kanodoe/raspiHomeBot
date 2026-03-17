@@ -7,6 +7,11 @@ from app.core.config import settings
 from app.core.logging import logger
 
 class OllamaService:
+    """
+    Servicio para interactuar con Ollama (LLM local).
+    Permite arrancar/parar Ollama localmente o vía SSH, generar texto
+    y obtener sugerencias de estilo y letra para canciones.
+    """
     _base_url: str = settings.OLLAMA_BASE_URL
     _model: str = settings.OLLAMA_MODEL
     _process: Optional[subprocess.Popen] = None
@@ -24,6 +29,9 @@ class OllamaService:
 
     @classmethod
     async def is_available(cls) -> bool:
+        """
+        Verifica si la API de Ollama está disponible y respondiendo.
+        """
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{cls._base_url}/api/tags", timeout=2.0)
@@ -49,9 +57,9 @@ class OllamaService:
     @classmethod
     async def start_ollama(cls) -> Tuple[bool, Optional[str]]:
         """
-        Start Ollama. Returns (success, error_message).
-        If the port is already in use on the remote host, we do NOT kill the process;
-        we return False with a message asking the user to set OLLAMA_HOST=0.0.0.0.
+        Inicia el servicio de Ollama.
+        Soporta ejecución local o remota vía SSH.
+        Si el puerto ya está en uso remotamente, no mata el proceso y pide configuración manual.
         """
         if await cls.is_available():
             logger.info("Ollama is already running.")
@@ -114,6 +122,9 @@ class OllamaService:
 
     @classmethod
     async def stop_ollama(cls) -> bool:
+        """
+        Detiene el servicio de Ollama (si es posible).
+        """
         from urllib.parse import urlparse
         parsed = urlparse(cls._base_url)
         host = parsed.hostname
@@ -153,6 +164,9 @@ class OllamaService:
 
     @classmethod
     async def generate_text(cls, prompt: str, system_prompt: Optional[str] = None) -> Optional[str]:
+        """
+        Genera una respuesta de texto utilizando el modelo configurado en Ollama.
+        """
         cls._last_error = None
         url = f"{cls._base_url}/api/generate"
         payload = {
@@ -193,9 +207,10 @@ class OllamaService:
         style_only: bool = False,
     ) -> Optional[Dict[str, str]]:
         """
-        Suggests style and lyrics based on a user prompt (ACE-Step compatible format).
-        Style/tags are always in English; lyrics in the requested language (or empty if style_only).
-        Returns a dict with 'style' and 'lyrics'.
+        Genera sugerencias de estilo (tags) y letra basadas en una descripción del usuario.
+        Utiliza prompts especializados para obtener un formato compatible con ACE-Step.
+        `refinamiento` permite ajustar una sugerencia previa.
+        `language_code` indica el idioma deseado para la letra.
         """
         from app.prompts import (
             SYSTEM_PROMPT_STYLE_LYRICS,
@@ -223,6 +238,7 @@ class OllamaService:
                 return {
                     "style": "",
                     "lyrics": "",
+                    "summary": "",
                     "error": "model_not_found",
                     "message": (
                         f"El modelo '{cls._model}' no está instalado en Ollama. "
@@ -236,3 +252,29 @@ class OllamaService:
         if "Error parseando" in result.get("style", ""):
             logger.error(f"Error parsing LLM response. Raw: {response_text[:500]}")
         return result
+
+    @classmethod
+    async def suggest_random_song(cls) -> Optional[Dict[str, str]]:
+        """
+        Genera una canción completamente aleatoria (estilo, letra e idioma) usando IA.
+        
+        Devuelve un diccionario con:
+        - style: El estilo musical sugerido.
+        - lyrics: La letra de la canción.
+        - summary: Un resumen en español de la canción (estilo y tema).
+        """
+        from app.prompts import SYSTEM_PROMPT_RANDOM_SONG, parse_style_lyrics_response
+        
+        prompt = "Create a completely random song in any language and any musical genre."
+        response_text = await cls.generate_text(prompt, SYSTEM_PROMPT_RANDOM_SONG)
+        if not response_text:
+            if cls._last_error == "model_not_found":
+                return {
+                    "style": "",
+                    "lyrics": "",
+                    "summary": "",
+                    "error": "model_not_found",
+                }
+            return None
+            
+        return parse_style_lyrics_response(response_text)

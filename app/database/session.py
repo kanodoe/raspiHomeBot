@@ -3,12 +3,13 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from app.core.config import settings
 from app.database.models import Base
 
-engine = create_async_engine(settings.DATABASE_URL, echo=False)
+engine = create_async_engine(settings.get_database_url(), echo=False)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
 def _add_invitation_song_columns(conn):
     """Añade columnas de invitación por canciones si no existen (migración SQLite)."""
+    db_url = settings.get_database_url()
     for col, spec in [
         ("song_quota", "INTEGER"),
         ("songs_used", "INTEGER DEFAULT 0"),
@@ -23,6 +24,7 @@ def _add_invitation_song_columns(conn):
 
 def _add_user_and_invitation_columns(conn):
     """Añade columnas nuevas a users e invitations (migración SQLite)."""
+    db_url = settings.get_database_url()
     for table, cols in [
         ("users", [("first_name", "VARCHAR(255)"), ("last_name", "VARCHAR(255)")]),
         (
@@ -45,7 +47,8 @@ def _add_user_and_invitation_columns(conn):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        if "sqlite" in (settings.DATABASE_URL or ""):
+        db_url = settings.get_database_url()
+        if "sqlite" in (db_url or ""):
             await conn.run_sync(_add_invitation_song_columns)
             await conn.run_sync(_add_user_and_invitation_columns)
 

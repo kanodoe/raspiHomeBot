@@ -53,6 +53,24 @@ SYSTEM_PROMPT_STYLE_ONLY = (
 )
 
 
+# When the user wants a completely random song (assisted by AI)
+SYSTEM_PROMPT_RANDOM_SONG = (
+    "You are an expert song composer and music producer. "
+    "Your task is to create a COMPLETELY RANDOM song. "
+    "Choose a random musical genre (e.g. heavy metal, k-pop, bossa nova, synthwave, country, etc.), "
+    "a random theme/topic, and a random language from around the world (e.g. Japanese, Italian, Spanish, English, etc.). "
+    "You must respond ONLY with a valid JSON object with exactly three fields:\n"
+    "- \"style\": concise musical style description in ENGLISH (genre, instruments, tempo, mood). "
+    "Include how the song begins, develops and ends. Use English tags for the music model.\n"
+    "- \"lyrics\": the full song lyrics in the randomly chosen language. "
+    "Mark sections with square brackets: [Intro], [Verse 1], [Chorus], etc.\n"
+    "- \"summary\": A very brief summary in SPANISH about the musical style and what the lyrics are about (1-2 sentences max). "
+    "Example: 'Una canción de K-Pop energético sobre la libertad en Coreano' or 'Un jazz suave instrumental sobre una tarde lluviosa'. "
+    "Do not give details, just the general idea.\n"
+    "Respond only with the JSON, no extra text, no markdown."
+)
+
+
 # Language codes and display names (ACE-Step supports 50+; common set for the UI)
 LYRICS_LANGUAGE_OPTIONS: List[Tuple[str, str]] = [
     ("en", "English"),
@@ -224,7 +242,7 @@ def _extract_first_json_object(text: str) -> Optional[str]:
 
 def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
     """
-    Parse the LLM response into a dict with 'style' and 'lyrics'.
+    Parsea la respuesta del LLM en un diccionario con 'style', 'lyrics' y opcionalmente 'summary'.
 
     Tolerates markdown code blocks and extra text; extracts the first JSON object found.
     Si el modelo devuelve "style" como objeto (p. ej. genre, instruments, tempo, mood),
@@ -232,7 +250,7 @@ def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
     Si falla el parseo, se usa estilo por defecto y el texto crudo como letra en lugar de mostrar error.
     """
     if not response_text or not response_text.strip():
-        return {"style": "Pop rock", "lyrics": ""}
+        return {"style": "Pop rock", "lyrics": "", "summary": ""}
 
     # Quitar posibles bloques markdown ```json ... ```
     text = response_text.strip()
@@ -259,8 +277,9 @@ def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
             if data is not None:
                 style = _normalize_style(data.get("style"))
                 lyrics = _normalize_lyrics(data.get("lyrics"))
+                summary = str(data.get("summary") or "").strip()
                 if style and "Error" not in style:
-                    return {"style": style, "lyrics": lyrics}
+                    return {"style": style, "lyrics": lyrics, "summary": summary}
     except (KeyError, TypeError):
         pass
 
@@ -273,4 +292,5 @@ def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
     return {
         "style": style_fallback,
         "lyrics": text if len(text) > 20 else "",
+        "summary": ""
     }
