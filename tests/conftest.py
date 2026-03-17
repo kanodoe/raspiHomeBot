@@ -1,3 +1,11 @@
+import os
+# Mock mandatory env vars for AppSettings initialization during tests
+os.environ.setdefault("PC_MAC", "00:00:00:00:00:00")
+os.environ.setdefault("PC_IP", "127.0.0.1")
+os.environ.setdefault("SSH_USER", "test_user")
+os.environ.setdefault("SSH_KEY_PATH", "/tmp/id_rsa")
+os.environ.setdefault("ADMIN_TELEGRAM_ID", "12345")
+
 import pytest_asyncio
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker

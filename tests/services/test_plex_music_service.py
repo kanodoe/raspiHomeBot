@@ -53,11 +53,16 @@ async def test_process_generated_song_success():
             command = args[0]
             host = args[1]
             
-            assert "Smooth Jazz" in command
-            assert "120 BPM" in command
-            assert "Spanish" in command
-            assert "Juan Pérez" in command
-            assert "RaspiValSong" in command
+            # Since it's now base64 encoded, we decode to verify content
+            import base64
+            encoded = command.split(" ")[-1]
+            decoded = base64.b64decode(encoded).decode('utf-16-le')
+            
+            assert "Smooth Jazz" in decoded
+            assert "120 BPM" in decoded
+            assert "Spanish" in decoded
+            assert "Juan Pérez" in decoded
+            assert "RaspiValSong" in decoded
             assert host == "192.168.1.10"
             
             mock_notify.assert_called_once()
