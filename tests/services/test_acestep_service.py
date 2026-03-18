@@ -29,8 +29,15 @@ async def test_generate_song_success():
             json=lambda: {"code": 200, "data": {"task_id": "test_task_123"}}
         )
         
-        task_id = await AceStepService.generate_song("Pop style", "Hello world")
+        task_id = await AceStepService.generate_song("Pop style", "Hello world", language="German")
         assert task_id == "test_task_123"
+        
+        # Verify language was sent in payload
+        args, kwargs = mock_post.call_args
+        payload = kwargs.get("json")
+        assert payload["language"] == "German"
+        assert payload["prompt"] == "Pop style"
+        assert payload["lyrics"] == "Hello world"
 
 @pytest.mark.asyncio
 async def test_get_task_status_completed():

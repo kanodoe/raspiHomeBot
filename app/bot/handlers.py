@@ -1056,8 +1056,8 @@ async def generate_song_ask_style(update: Update, context: ContextTypes.DEFAULT_
 def _build_language_keyboard():
     from app.prompts import LYRICS_LANGUAGE_OPTIONS
     buttons = [
-        [InlineKeyboardButton(name, callback_data=f"lang_{code}")]
-        for code, name in LYRICS_LANGUAGE_OPTIONS
+        [InlineKeyboardButton(name_es, callback_data=f"lang_{code}")]
+        for code, name_es, name_en in LYRICS_LANGUAGE_OPTIONS
     ]
     return InlineKeyboardMarkup(buttons)
 

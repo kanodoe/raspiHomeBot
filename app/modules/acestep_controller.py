@@ -117,7 +117,7 @@ class AceStepController(BaseModule):
                 await self.bus.publish("notify.error", {"message": f"❌ {msg} Si el servicio no está disponible, contacta al administrador.", "source": source})
                 return
 
-        task_id = await AceStepService.generate_song(prompt, lyrics)
+        task_id = await AceStepService.generate_song(prompt, lyrics, language=language)
         if not task_id:
             await self.bus.publish("notify.error", {"message": "Error al enviar la tarea de generación. Si el servicio no está disponible, contacta al administrador.", "source": source})
             return

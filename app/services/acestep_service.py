@@ -42,9 +42,9 @@ class AceStepService:
             logger.info("ACE-Step API is already running.")
             return True, None
 
-        # Original bat from ACE-Step repo; when using SSH we copy it with HOST=0.0.0.0 to start_api_server_docker.bat
+        # Original bat from ACE-Step repo; when using SSH we copy it with HOST=0.0.0.0 to start_api_server_docker_remote.bat
         original_bat_name = "start_api_server.bat"
-        docker_bat_name = "start_api_server_docker.bat"
+        docker_bat_name = "start_api_server_docker_remote.bat"
         if os.name != 'nt' and (":" in settings.ACESTEP_PATH or settings.ACESTEP_PATH.startswith("\\")):
             path_cleaned = settings.ACESTEP_PATH.rstrip("/\\")
             bat_path_str = f"{path_cleaned}\\{original_bat_name}".replace("/", "\\")
@@ -87,19 +87,26 @@ class AceStepService:
                 bat_to_run = remote_bat
                 cmd = (
                     f'powershell -Command "'
-                    f'$env:Path = [Environment]::GetEnvironmentVariable(\"Path\",\"User\") + \";\" + [Environment]::GetEnvironmentVariable(\"Path\",\"Machine\"); '
-                    f'Set-Location -LiteralPath \'{ace_path_str}\'; '
-                    f'Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false & .\\{bat_to_run}\' -WorkingDirectory \'{ace_path_str}\' -WindowStyle Hidden"'
+                    f'$env:Path = [Environment]::GetEnvironmentVariable(\'Path\',\'User\') + \';\' + [Environment]::GetEnvironmentVariable(\'Path\',\'Machine\'); '
+                    f'$acePath = \'{ace_path_str}\'; '
+                    f'if (Test-Path $acePath) {{ Set-Location -LiteralPath $acePath }} else {{ exit 1 }}; '
+                    f'Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false & .\\{bat_to_run}\' -WorkingDirectory $acePath -WindowStyle Hidden"'
                 )
             else:
                 # Read start_api_server.bat, write docker bat with HOST=0.0.0.0, run it
                 bat_to_run = docker_bat_name
+                # El regex busca la línea "set HOST=..." ignorando mayúsculas y espacios, y la cambia a 0.0.0.0
                 cmd = (
                     f'powershell -Command "'
-                    f'$env:Path = [Environment]::GetEnvironmentVariable(\"Path\",\"User\") + \";\" + [Environment]::GetEnvironmentVariable(\"Path\",\"Machine\"); '
-                    f'Set-Location -LiteralPath \'{ace_path_str}\'; '
-                    f'(Get-Content -LiteralPath \'.\\{original_bat_name}\' -Raw) -replace \'set HOST=127.0.0.1\', \'set HOST=0.0.0.0\' | Set-Content -LiteralPath \'.\\{docker_bat_name}\' -Encoding ASCII; '
-                    f'Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false & .\\{bat_to_run}\' -WorkingDirectory \'{ace_path_str}\' -WindowStyle Hidden"'
+                    f'$env:Path = [Environment]::GetEnvironmentVariable(\'Path\',\'User\') + \';\' + [Environment]::GetEnvironmentVariable(\'Path\',\'Machine\'); '
+                    f'$acePath = \'{ace_path_str}\'; '
+                    f'if (Test-Path $acePath) {{ Set-Location -LiteralPath $acePath }} else {{ exit 1 }}; '
+                    f'if (Test-Path \'.\\{original_bat_name}\') {{ '
+                    f'  (Get-Content -LiteralPath \'.\\{original_bat_name}\' -Raw) -replace \'(?mi)^\\s*set\\s+HOST\\s*=\\s*.*$\', \'set HOST=0.0.0.0\' | Set-Content -LiteralPath \'.\\{docker_bat_name}\' -Encoding ASCII '
+                    f'}}; '
+                    f'if (Test-Path \'.\\{bat_to_run}\') {{ '
+                    f'  Start-Process -FilePath \'cmd.exe\' -ArgumentList \'/c set CHECK_UPDATE=false & .\\{bat_to_run}\' -WorkingDirectory $acePath -WindowStyle Hidden '
+                    f'}} else {{ exit 1 }}"'
                 )
             
             if await run_ssh_command(cmd, ssh_host):
@@ -266,7 +273,7 @@ class AceStepService:
         return False
 
     @classmethod
-    async def generate_song(cls, prompt: str, lyrics: str = "") -> Optional[str]:
+    async def generate_song(cls, prompt: str, lyrics: str = "", language: str = "") -> Optional[str]:
         """
         Envía una solicitud de generación de música a la API de ACE-Step.
         Devuelve el `task_id` si la tarea fue aceptada correctamente.
@@ -281,7 +288,8 @@ class AceStepService:
             "thinking": True,
             "use_format": True,
             "task_type": "text2music",
-            "gpt_description_prompt": prompt # Sometimes needed alongside prompt
+            "gpt_description_prompt": prompt, # Sometimes needed alongside prompt
+            "language": language
         }
         try:
             async with httpx.AsyncClient() as client:

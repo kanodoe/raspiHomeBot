@@ -87,8 +87,13 @@ class OllamaService:
                     return False, msg
 
                 logger.info(f"Attempting to start Ollama on host {ssh_host} via SSH...")
-                # Set OLLAMA_HOST in the same session so the child process inherits it
-                cmd = 'powershell -Command "$env:OLLAMA_HOST = \'0.0.0.0\'; Start-Process -FilePath \'ollama\' -ArgumentList \'serve\' -WindowStyle Hidden"'
+                # Set OLLAMA_HOST and load PATH in the same session so the child process inherits it
+                cmd = (
+                    'powershell -Command "'
+                    '$env:Path = [Environment]::GetEnvironmentVariable(\'Path\',\'User\') + \';\' + [Environment]::GetEnvironmentVariable(\'Path\',\'Machine\'); '
+                    '$env:OLLAMA_HOST = \'0.0.0.0\'; '
+                    'Start-Process -FilePath \'ollama\' -ArgumentList \'serve\' -WindowStyle Hidden"'
+                )
                 if await run_ssh_command(cmd, ssh_host):
                     # Wait for it to be ready (up to 30s)
                     for _ in range(15):
@@ -225,9 +230,9 @@ class OllamaService:
             system = SYSTEM_PROMPT_STYLE_ONLY
             prompt = build_user_prompt(user_prompt, refinamiento, style_only=True)
         elif language_code:
-            lang_name = get_language_name(language_code)
-            system = get_system_prompt_style_lyrics(lang_name)
-            prompt = build_user_prompt(user_prompt, refinamiento, language_name=lang_name, style_only=False)
+            lang_name_en = get_language_name(language_code, english=True)
+            system = get_system_prompt_style_lyrics(lang_name_en)
+            prompt = build_user_prompt(user_prompt, refinamiento, language_name=lang_name_en, style_only=False)
         else:
             system = SYSTEM_PROMPT_STYLE_LYRICS
             prompt = build_user_prompt(user_prompt, refinamiento)

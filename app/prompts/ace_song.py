@@ -26,6 +26,7 @@ def get_system_prompt_style_lyrics(language_name: str) -> str:
         "Focus on creating a vivid atmosphere (analog feel, spacious reverb, emotional nuance). "
         "All style descriptors must be in English.\n"
         "- \"lyrics\": the full song lyrics in " + language_name + ". "
+        "IMPORTANT: You MUST write the lyrics ONLY in " + language_name + ", regardless of the language used in the theme description. "
         "You MUST mark every section header with square brackets and on their own line, e.g. [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. "
         "Ensure section labels are ALWAYS inside []. Use line breaks between stanzas.\n"
         "Respond ONLY with the JSON object. Do not include any text before or after the JSON."
@@ -79,33 +80,34 @@ SYSTEM_PROMPT_RANDOM_SONG = (
 )
 
 
-# Language codes and display names (ACE-Step supports 50+; common set for the UI)
-LYRICS_LANGUAGE_OPTIONS: List[Tuple[str, str]] = [
-    ("en", "Inglés"),
-    ("es", "Español"),
-    ("fr", "Francés"),
-    ("de", "Alemán"),
-    ("it", "Italiano"),
-    ("pt", "Portugués"),
-    ("zh", "Chino"),
-    ("ja", "Japonés"),
-    ("ko", "Coreano"),
-    ("ru", "Ruso"),
-    ("ar", "Árabe"),
-    ("hi", "Hindi"),
-    ("tr", "Turco"),
-    ("pl", "Polaco"),
-    ("nl", "Neerlandés"),
-    ("id", "Indonesio"),
-    ("th", "Tailandés"),
+# Language codes and display names
+# Format: (code, display_name_es, display_name_en)
+LYRICS_LANGUAGE_OPTIONS: List[Tuple[str, str, str]] = [
+    ("en", "Inglés", "English"),
+    ("es", "Español", "Spanish"),
+    ("fr", "Francés", "French"),
+    ("de", "Alemán", "German"),
+    ("it", "Italiano", "Italian"),
+    ("pt", "Portugués", "Portuguese"),
+    ("zh", "Chino", "Chinese"),
+    ("ja", "Japonés", "Japanese"),
+    ("ko", "Coreano", "Korean"),
+    ("ru", "Ruso", "Russian"),
+    ("ar", "Árabe", "Arabic"),
+    ("hi", "Hindi", "Hindi"),
+    ("tr", "Turco", "Turkish"),
+    ("pl", "Polaco", "Polish"),
+    ("nl", "Neerlandés", "Dutch"),
+    ("id", "Indonesio", "Indonesian"),
+    ("th", "Tailandés", "Thai"),
 ]
 
 
-def get_language_name(code: str) -> str:
+def get_language_name(code: str, english: bool = False) -> str:
     """Return display name for a language code, or the code itself."""
-    for c, name in LYRICS_LANGUAGE_OPTIONS:
-        if c == code:
-            return name
+    for item in LYRICS_LANGUAGE_OPTIONS:
+        if item[0] == code:
+            return item[2] if english else item[1]
     return code
 
 
