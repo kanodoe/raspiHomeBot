@@ -26,9 +26,9 @@ def get_system_prompt_style_lyrics(language_name: str) -> str:
         "Focus on creating a vivid atmosphere (analog feel, spacious reverb, emotional nuance). "
         "All style descriptors must be in English.\n"
         "- \"lyrics\": the full song lyrics in " + language_name + ". "
-        "You MUST mark every section header with square brackets, e.g. [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. "
+        "You MUST mark every section header with square brackets and on their own line, e.g. [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. "
         "Ensure section labels are ALWAYS inside []. Use line breaks between stanzas.\n"
-        "Respond only with the JSON, no extra text, no markdown."
+        "Respond ONLY with the JSON object. Do not include any text before or after the JSON."
     )
 
 # Default (e.g. Spanish) when no language specified
@@ -42,9 +42,9 @@ SYSTEM_PROMPT_STYLE_LYRICS = (
     "a detailed dynamic arrangement (how it starts, develops, and ends with specific instrument behavior). "
     "Aim for descriptive, atmospheric prose rather than just simple tags.\n"
     "- \"lyrics\": the full song lyrics in the language requested by the user. "
-    "You MUST mark every section header with square brackets: [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. "
+    "You MUST mark every section header with square brackets and on their own line: [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. "
     "Ensure labels are ALWAYS inside []. Use line breaks between stanzas.\n"
-    "Respond only with the JSON, no extra text, no markdown."
+    "Respond ONLY with the JSON object. Do not include any text before or after the JSON."
 )
 
 # When user chose "solo estilo" (instrumental): only style in English, no lyrics.
@@ -70,12 +70,12 @@ SYSTEM_PROMPT_RANDOM_SONG = (
     "Include genre, instruments, tempo, mood, and MANDATORY vocal details (male/female/duet/choir). "
     "Describe structure with intention: how the song begins, develops and ends. Use English tags.\n"
     "- \"lyrics\": the full song lyrics in the randomly chosen language. "
-    "You MUST mark section headers with square brackets: [Intro], [Verse 1], [Chorus], etc. Labels must be ALWAYS inside [].\n"
+    "You MUST mark section headers with square brackets and on their own line: [Intro], [Verse 1], [Chorus], etc. Labels must be ALWAYS inside [].\n"
     "- \"language\": the name of the randomly chosen language (e.g. \"Spanish\", \"Japanese\").\n"
     "- \"summary\": A very brief summary in SPANISH about the musical style and what the lyrics are about (1-2 sentences max). "
     "Example: 'Una canción de K-Pop energético sobre la libertad en Coreano' or 'Un jazz suave instrumental sobre una tarde lluviosa'. "
     "Do not give details, just the general idea.\n"
-    "Respond only with the JSON, no extra text, no markdown."
+    "Respond ONLY with the JSON object. Do not include any text before or after the JSON."
 )
 
 
@@ -208,9 +208,9 @@ def normalize_lyrics_sections(lyrics: str) -> str:
             out.append(line)
             continue
             
-        # Caso 1: La línea ES solo una etiqueta (posiblemente con número, y con : o - opcional al final)
-        # Ej: "Verse 1", "Chorus:", "Bridge -"
-        # Permitimos que ya tenga corchetes, pero los normalizamos
+    # Caso 1: La línea ES solo una etiqueta (posiblemente con número, y con : o - opcional al final)
+        # Ej: "Verse 1", "Chorus:", "Bridge -", "[Intro"
+        # Permitimos que ya tenga corchetes incompletos o completos, pero los normalizamos
         match = re.match(
             rf"^\[?({tags_re})(?:\s*\d+)?\]?(?:\s*[:\-])?\s*$",
             stripped,
@@ -226,10 +226,11 @@ def normalize_lyrics_sections(lyrics: str) -> str:
                 out.append(f"[{label}]")
                 continue
             
-        # Caso 2: La línea empieza con la etiqueta seguida de : o - y luego texto en la misma línea
+        # Caso 2: La línea empieza con la etiqueta y tiene más texto
         # Ej: "Verse 1: En un día de sol..." -> Convertir a "[Verse 1]\nEn un día de sol..."
+        # O: "[Intro Me voy a Valdivia..." -> Convertir a "[Intro]\nMe voy a Valdivia..."
         match = re.match(
-            rf"^\[?({tags_re})(?:\s*\d+)?\]?(?:\s*[:\-]\s+)(.*)$",
+            rf"^\[?({tags_re})(?:\s*\d+)?\]?(?:\s*[:\-]\s*|\s+)(.*)$",
             stripped,
             re.IGNORECASE | re.DOTALL
         )
@@ -239,7 +240,10 @@ def normalize_lyrics_sections(lyrics: str) -> str:
             label = label[0].upper() + label[1:] if label else label
             
             rest = match.group(2).strip()
-            out.append(f"[{label}]\n{rest}" if rest else f"[{label}]")
+            if rest:
+                out.append(f"[{label}]\n{rest}")
+            else:
+                out.append(f"[{label}]")
             continue
             
         out.append(line)
@@ -331,9 +335,17 @@ def parse_style_lyrics_response(response_text: str) -> Dict[str, str]:
         m = re.search(r'["\']style["\']\s*:\s*["\']([^"\']+)["\']', text, re.IGNORECASE)
         if m:
             style_fallback = _normalize_style(m.group(1)) or style_fallback
+
+    # Si parece que hay letra pero no se parseó JSON, intentamos normalizar el texto plano
+    lyrics_fallback = ""
+    if len(text) > 20:
+        # Intentar extraer algo que parezca letra si hay campos de estilo mezclados
+        # Si no, usamos el texto completo
+        lyrics_fallback = _normalize_lyrics(text)
+
     return {
         "style": style_fallback,
-        "lyrics": text if len(text) > 20 else "",
+        "lyrics": lyrics_fallback,
         "summary": "",
         "language": ""
     }
