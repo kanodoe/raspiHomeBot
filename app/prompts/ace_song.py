@@ -74,23 +74,23 @@ SYSTEM_PROMPT_RANDOM_SONG = (
 
 # Language codes and display names (ACE-Step supports 50+; common set for the UI)
 LYRICS_LANGUAGE_OPTIONS: List[Tuple[str, str]] = [
-    ("en", "English"),
+    ("en", "Inglés"),
     ("es", "Español"),
-    ("fr", "Français"),
-    ("de", "Deutsch"),
+    ("fr", "Francés"),
+    ("de", "Alemán"),
     ("it", "Italiano"),
-    ("pt", "Português"),
-    ("zh", "中文"),
-    ("ja", "日本語"),
-    ("ko", "한국어"),
-    ("ru", "Русский"),
-    ("ar", "العربية"),
-    ("hi", "हिन्दी"),
-    ("tr", "Türkçe"),
-    ("pl", "Polski"),
-    ("nl", "Nederlands"),
-    ("id", "Indonesia"),
-    ("th", "ไทย"),
+    ("pt", "Portugués"),
+    ("zh", "Chino"),
+    ("ja", "Japonés"),
+    ("ko", "Coreano"),
+    ("ru", "Ruso"),
+    ("ar", "Árabe"),
+    ("hi", "Hindi"),
+    ("tr", "Turco"),
+    ("pl", "Polaco"),
+    ("nl", "Neerlandés"),
+    ("id", "Indonesio"),
+    ("th", "Tailandés"),
 ]
 
 
