@@ -142,4 +142,15 @@ def get_invite_link_secret() -> str:
     """
     if settings.INVITE_LINK_SECRET:
         return settings.INVITE_LINK_SECRET
+    
+    # Aviso si hay múltiples bots y no hay secreto explícito
+    bot_mode = getattr(settings, "BOT_MODE", "admin").strip().lower()
+    if bot_mode != "admin" and not settings.BOT_TOKEN_ADMIN:
+        from app.core.logging import logger
+        logger.warning(
+            "INVITE_LINK_SECRET no está configurado y BOT_TOKEN_ADMIN tampoco. "
+            "Si los bots usan tokens distintos, los enlaces de invitación FALLARÁN. "
+            "Se recomienda configurar INVITE_LINK_SECRET en el .env con un valor compartido."
+        )
+        
     return get_bot_token_for_mode("admin")

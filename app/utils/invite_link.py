@@ -81,6 +81,7 @@ def _decrypt_payload(token_str: str, secret: str) -> Optional[Dict[str, Any]]:
     if token_str.startswith("v2"):
         try:
             if "." not in token_str:
+                logger.debug("V2 decrypt failed: no dot separator")
                 return None
             data_part, sig_part = token_str[2:].split(".", 1)
             
@@ -91,7 +92,9 @@ def _decrypt_payload(token_str: str, secret: str) -> Optional[Dict[str, Any]]:
             expected_sig_b64 = base64.urlsafe_b64encode(expected_sig).decode("ascii")[:12]
             
             if not hmac.compare_digest(sig_part, expected_sig_b64):
-                logger.warning("Invite link signature mismatch")
+                logger.warning(
+                    f"Invite link signature mismatch. Secret used for HMAC check: {secret[:4]}...{secret[-4:] if len(secret)>8 else ''}"
+                )
                 return None
             
             # Parsear datos (muy simple: sN, hN, dN, eN, nN)
@@ -119,9 +122,17 @@ def _decrypt_payload(token_str: str, secret: str) -> Optional[Dict[str, Any]]:
             return None
 
     # 2. Legacy: Fernet
+    if len(token_str) < 20:
+        return None
+        
+    # Telegram suele truncar a 64 caracteres. Si recibimos exactamente 64 y es Fernet, avisar.
+    if len(token_str) == 64:
+        logger.warning("Token legacy (Fernet) de 64 caracteres: es muy probable que Telegram lo haya truncado y falle el descifrado.")
+
     try:
         from cryptography.fernet import Fernet, InvalidToken
     except ImportError:
+        logger.warning("cryptography not installed; legacy invite links cannot be decoded.")
         return None
     try:
         token_b64 = token_str
@@ -133,7 +144,7 @@ def _decrypt_payload(token_str: str, secret: str) -> Optional[Dict[str, Any]]:
         payload_bytes = f.decrypt(token_b64.encode("ascii"))
         return json.loads(payload_bytes.decode("utf-8"))
     except (InvalidToken, ValueError, TypeError, Exception) as e:
-        logger.debug(f"Invite link decode failed (Fernet): {e}")
+        logger.debug(f"Invite link decode failed (Fernet): {type(e).__name__} - {e}")
         return None
 
 

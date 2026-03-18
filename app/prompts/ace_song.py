@@ -20,9 +20,9 @@ def get_system_prompt_style_lyrics(language_name: str) -> str:
         "Your task is to help the user create a song. "
         "You must respond ONLY with a valid JSON object with exactly two fields:\n"
         "- \"style\": concise musical style description for generation, in ENGLISH. "
-        "Include genre, instruments, tempo, mood (e.g. alternative rock, punchy drums, electric guitar, 120 BPM, intense). "
-        "Also describe structure: how the song begins (intro: sparse, full, fade-in), how it develops (verses, build-up, climax), and how it ends (outro, fade-out, big finish). "
-        "Use English tags and descriptors so the music model can use them.\n"
+        "Provide a single string with comma-separated tags (e.g. \"alternative rock, punchy drums, electric guitar, 120 BPM, intense\"). "
+        "Include genre, instruments, tempo, mood, and structural descriptors (intro, build-up, climax, outro). "
+        "Use English tags so the music model can use them.\n"
         "- \"lyrics\": the full song lyrics in " + language_name + ". "
         "Use clear structure: mark every section with square brackets, e.g. [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. "
         "Use line breaks between stanzas. The lyrics must be creative and match the style.\n"
@@ -34,7 +34,7 @@ SYSTEM_PROMPT_STYLE_LYRICS = (
     "You are an expert song composer and music producer. "
     "Your task is to help the user create a song. "
     "You must respond ONLY with a valid JSON object with exactly two fields:\n"
-    "- \"style\": concise musical style description in ENGLISH (genre, instruments, tempo, mood). "
+    "- \"style\": concise musical style description in ENGLISH as a single comma-separated string (genre, instruments, tempo, mood). "
     "Include how the song begins (intro), develops (build-up, climax) and ends (outro, fade or big finish). Use English tags for the music model.\n"
     "- \"lyrics\": the full song lyrics in the language requested by the user. "
     "Mark every section with square brackets: [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. Use line breaks between stanzas.\n"
@@ -46,7 +46,7 @@ SYSTEM_PROMPT_STYLE_ONLY = (
     "You are an expert music producer. "
     "The user wants only a musical style description for an instrumental track (no lyrics). "
     "Respond ONLY with a valid JSON object with exactly two fields:\n"
-    "- \"style\": concise musical style in ENGLISH. Include genre, instruments, tempo, mood (e.g. cinematic orchestral, 90 BPM, dramatic). "
+    "- \"style\": concise musical style in ENGLISH as a single comma-separated string. Include genre, instruments, tempo, mood (e.g. cinematic orchestral, 90 BPM, dramatic). "
     "Describe structure: how it begins (intro), develops and ends (outro or climax). Use English tags so the music model can use them.\n"
     "- \"lyrics\": leave empty string \"\".\n"
     "Respond only with the JSON, no extra text, no markdown."
@@ -60,7 +60,7 @@ SYSTEM_PROMPT_RANDOM_SONG = (
     "Choose a random musical genre (e.g. heavy metal, k-pop, bossa nova, synthwave, country, etc.), "
     "a random theme/topic, and a random language from around the world (e.g. Japanese, Italian, Spanish, English, etc.). "
     "You must respond ONLY with a valid JSON object with exactly four fields:\n"
-    "- \"style\": concise musical style description in ENGLISH (genre, instruments, tempo, mood). "
+    "- \"style\": concise musical style description in ENGLISH as a single comma-separated string (genre, instruments, tempo, mood). "
     "Include how the song begins, develops and ends. Use English tags for the music model.\n"
     "- \"lyrics\": the full song lyrics in the randomly chosen language. "
     "Mark sections with square brackets: [Intro], [Verse 1], [Chorus], etc.\n"
@@ -147,6 +147,10 @@ def _normalize_style(value) -> str:
                 continue
             if isinstance(v, list):
                 parts.append(" ".join(str(x) for x in v))
+            elif isinstance(v, dict):
+                # Recursivamente aplanar diccionarios anidados
+                flat_nested = _normalize_style(v)
+                parts.append(flat_nested)
             else:
                 parts.append(str(v))
         return ", ".join(parts).strip() or "Pop rock"
@@ -159,6 +163,15 @@ def _normalize_lyrics(value) -> str:
         return ""
     if isinstance(value, str):
         return normalize_lyrics_sections(value.strip())
+    if isinstance(value, dict):
+        # Si el modelo devuelve un objeto {"Verse 1": "...", "Chorus": "..."}
+        lines = []
+        for k, v in value.items():
+            # k es el nombre de la sección, v es el contenido
+            lines.append(f"[{k}]")
+            lines.append(str(v))
+            lines.append("")
+        return normalize_lyrics_sections("\n".join(lines))
     return normalize_lyrics_sections(str(value).strip())
 
 
