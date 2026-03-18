@@ -19,13 +19,15 @@ def get_system_prompt_style_lyrics(language_name: str) -> str:
         "You are an expert song composer and music producer. "
         "Your task is to help the user create a song. "
         "You must respond ONLY with a valid JSON object with exactly two fields:\n"
-        "- \"style\": concise musical style description for generation, in ENGLISH. "
-        "Provide a single string with comma-separated tags (e.g. \"alternative rock, punchy drums, electric guitar, 120 BPM, intense\"). "
-        "Include genre, instruments, tempo, mood, and structural descriptors (intro, build-up, climax, outro). "
-        "Use English tags so the music model can use them.\n"
+        "- \"style\": detailed musical style description in ENGLISH. "
+        "Describe the genre, mood, tempo, and instruments with high detail. "
+        "You MUST specify vocal characteristics (e.g., 'raw male vocals with breathy textures', 'intimate female lead', 'soft harmonies'). "
+        "Include a dynamic arc for the arrangement (e.g., 'starts minimal with acoustic guitar, builds with subtle percussion and pedal steel swells, instrumental bridge with harmonica'). "
+        "Focus on creating a vivid atmosphere (analog feel, spacious reverb, emotional nuance). "
+        "All style descriptors must be in English.\n"
         "- \"lyrics\": the full song lyrics in " + language_name + ". "
-        "Use clear structure: mark every section with square brackets, e.g. [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. "
-        "Use line breaks between stanzas. The lyrics must be creative and match the style.\n"
+        "You MUST mark every section header with square brackets, e.g. [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. "
+        "Ensure section labels are ALWAYS inside []. Use line breaks between stanzas.\n"
         "Respond only with the JSON, no extra text, no markdown."
     )
 
@@ -34,10 +36,14 @@ SYSTEM_PROMPT_STYLE_LYRICS = (
     "You are an expert song composer and music producer. "
     "Your task is to help the user create a song. "
     "You must respond ONLY with a valid JSON object with exactly two fields:\n"
-    "- \"style\": concise musical style description in ENGLISH as a single comma-separated string (genre, instruments, tempo, mood). "
-    "Include how the song begins (intro), develops (build-up, climax) and ends (outro, fade or big finish). Use English tags for the music model.\n"
+    "- \"style\": detailed musical style description in ENGLISH. "
+    "Describe genre, mood, tempo (BPM), and instruments. "
+    "You MUST include specific vocal details (e.g., gender, texture, number of voices) and "
+    "a detailed dynamic arrangement (how it starts, develops, and ends with specific instrument behavior). "
+    "Aim for descriptive, atmospheric prose rather than just simple tags.\n"
     "- \"lyrics\": the full song lyrics in the language requested by the user. "
-    "Mark every section with square brackets: [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. Use line breaks between stanzas.\n"
+    "You MUST mark every section header with square brackets: [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Outro]. "
+    "Ensure labels are ALWAYS inside []. Use line breaks between stanzas.\n"
     "Respond only with the JSON, no extra text, no markdown."
 )
 
@@ -60,10 +66,11 @@ SYSTEM_PROMPT_RANDOM_SONG = (
     "Choose a random musical genre (e.g. heavy metal, k-pop, bossa nova, synthwave, country, etc.), "
     "a random theme/topic, and a random language from around the world (e.g. Japanese, Italian, Spanish, English, etc.). "
     "You must respond ONLY with a valid JSON object with exactly four fields:\n"
-    "- \"style\": concise musical style description in ENGLISH as a single comma-separated string (genre, instruments, tempo, mood). "
-    "Include how the song begins, develops and ends. Use English tags for the music model.\n"
+    "- \"style\": concise musical style description in ENGLISH as a single comma-separated string. "
+    "Include genre, instruments, tempo, mood, and MANDATORY vocal details (male/female/duet/choir). "
+    "Describe structure with intention: how the song begins, develops and ends. Use English tags.\n"
     "- \"lyrics\": the full song lyrics in the randomly chosen language. "
-    "Mark sections with square brackets: [Intro], [Verse 1], [Chorus], etc.\n"
+    "You MUST mark section headers with square brackets: [Intro], [Verse 1], [Chorus], etc. Labels must be ALWAYS inside [].\n"
     "- \"language\": the name of the randomly chosen language (e.g. \"Spanish\", \"Japanese\").\n"
     "- \"summary\": A very brief summary in SPANISH about the musical style and what the lyrics are about (1-2 sentences max). "
     "Example: 'Una canción de K-Pop energético sobre la libertad en Coreano' or 'Un jazz suave instrumental sobre una tarde lluviosa'. "
@@ -178,45 +185,65 @@ def _normalize_lyrics(value) -> str:
 def normalize_lyrics_sections(lyrics: str) -> str:
     """
     Asegura que todas las indicaciones de sección (Verse, Chorus, Intro, etc.)
-    estén entre corchetes []. Si aparecen como "Verse 1:" o "Chorus:", se convierten a [Verse 1], [Chorus].
+    estén entre corchetes []. 
+    Cubre casos como "Verse 1:", "Chorus -", "[Intro]", etc.
     """
     if not lyrics or not lyrics.strip():
         return lyrics
 
     lines = lyrics.split("\n")
     out = []
+    
+    # Lista de etiquetas comunes que el LLM podría usar como encabezado de sección
+    tags = [
+        "Intro", "Verse", "Verso", "Chorus", "Coro", "Bridge", "Puente", 
+        "Outro", "Pre-Chorus", "Post-Chorus", "Interlude", "Refrain",
+        "Solo", "Instrumental", "Hook", "Drop", "Breakdown", "Coda"
+    ]
+    tags_re = "|".join(tags)
+    
     for line in lines:
         stripped = line.strip()
         if not stripped:
             out.append(line)
             continue
-        # Si la línea es solo una etiqueta de sección (con o sin : o -), envolver en []
+            
+        # Caso 1: La línea ES solo una etiqueta (posiblemente con número, y con : o - opcional al final)
+        # Ej: "Verse 1", "Chorus:", "Bridge -"
+        # Permitimos que ya tenga corchetes, pero los normalizamos
         match = re.match(
-            r"^(Intro|Verse\s*\d*|Verso\s*\d*|Chorus|Coro|Bridge|Puente|Outro|Pre-Chorus|Post-Chorus|Interlude|Refrain)(?:\s*[:\-])?\s*$",
+            rf"^\[?({tags_re})(?:\s*\d+)?\]?(?:\s*[:\-])?\s*$",
             stripped,
-            re.IGNORECASE,
+            re.IGNORECASE
         )
         if match:
-            label = match.group(1).strip()
-            if not (label.startswith("[") and label.endswith("]")):
+            # Extraer solo la parte alfanumérica (etiqueta y número)
+            clean_match = re.search(rf"({tags_re})(?:\s*\d+)?", stripped, re.IGNORECASE)
+            if clean_match:
+                label = clean_match.group(0).strip()
+                # Capitalizar la primera letra para consistencia (opcional, pero queda mejor)
+                label = label[0].upper() + label[1:] if label else label
                 out.append(f"[{label}]")
-            else:
-                out.append(line)
-            continue
-        # Si la línea empieza por etiqueta seguida de dos puntos o guión y luego texto, poner etiqueta en []
+                continue
+            
+        # Caso 2: La línea empieza con la etiqueta seguida de : o - y luego texto en la misma línea
+        # Ej: "Verse 1: En un día de sol..." -> Convertir a "[Verse 1]\nEn un día de sol..."
         match = re.match(
-            r"^(Intro|Verse\s*\d*|Verso\s*\d*|Chorus|Coro|Bridge|Puente|Outro|Pre-Chorus|Post-Chorus|Interlude|Refrain)(?:\s*[:\-]\s*)(.*)$",
+            rf"^\[?({tags_re})(?:\s*\d+)?\]?(?:\s*[:\-]\s+)(.*)$",
             stripped,
-            re.IGNORECASE | re.DOTALL,
+            re.IGNORECASE | re.DOTALL
         )
         if match:
-            label, rest = match.group(1).strip(), match.group(2).strip()
-            if not (label.startswith("[") and label.endswith("]")):
-                out.append(f"[{label}]\n{rest}" if rest else f"[{label}]")
-            else:
-                out.append(line)
+            label_match = re.search(rf"({tags_re})(?:\s*\d+)?", stripped, re.IGNORECASE)
+            label = label_match.group(0).strip() if label_match else match.group(1).strip()
+            label = label[0].upper() + label[1:] if label else label
+            
+            rest = match.group(2).strip()
+            out.append(f"[{label}]\n{rest}" if rest else f"[{label}]")
             continue
+            
         out.append(line)
+        
     return "\n".join(out)
 
 
